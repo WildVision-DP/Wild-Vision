@@ -1,15 +1,24 @@
-import { Hono, type Context } from 'hono';
+import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
+import authRoutes from './routes/auth';
+import testRoutes from './routes/test';
 
 const app = new Hono();
 
 // Middleware
-app.use('*', logger());
 app.use('*', cors());
+app.use('*', logger());
 
-// Health check endpoint
-app.get('/health', (c: Context) => {
+// Routes
+app.get('/', (c) => {
+    return c.json({
+        message: 'WildVision API - Wildlife Surveillance & Movement Analytics Platform',
+        version: '1.0.0',
+    });
+});
+
+app.get('/health', (c) => {
     return c.json({
         status: 'healthy',
         timestamp: new Date().toISOString(),
@@ -17,15 +26,13 @@ app.get('/health', (c: Context) => {
     });
 });
 
-// Root endpoint
-app.get('/', (c: Context) => {
-    return c.json({
-        message: 'WildVision API - Wildlife Surveillance & Movement Analytics Platform',
-        version: '1.0.0',
-    });
-});
+// Auth routes
+app.route('/auth', authRoutes);
 
-const port = process.env.PORT || 4000;
+// Test routes for middleware
+app.route('/test', testRoutes);
+
+const port = process.env.API_PORT || 4000;
 
 console.log(`🐅 WildVision API running on http://localhost:${port}`);
 
