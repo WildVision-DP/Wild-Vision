@@ -3,6 +3,8 @@ import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
 import authRoutes from './routes/auth';
 import testRoutes from './routes/test';
+import cameraRoutes from './routes/cameras';
+import geographyRoutes from './routes/geography';
 
 const app = new Hono();
 
@@ -31,6 +33,12 @@ app.route('/auth', authRoutes);
 
 // Test routes for middleware
 app.route('/test', testRoutes);
+
+// Camera routes
+app.route('/cameras', cameraRoutes);
+
+// Geography routes
+app.route('/geography', geographyRoutes);
 
 const port = process.env.API_PORT || 4000;
 
