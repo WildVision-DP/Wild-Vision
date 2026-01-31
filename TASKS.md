@@ -30,45 +30,57 @@
 
 ## 📦 Module 0 – Project Foundations & Governance
 
-### 0.1 Repository & Monorepo Setup
+### 0.1 Repository & Monorepo Setup (P0)
 
-**Task 0.1.1** - Create Monorepo Structure | **P0** | **Status:** [ ] Not Started
+**Status:** [x] Complete  
+**Owner:** DevOps Team  
+**Completed:** Jan 31, 2026
 
-- [ ] **Task 0.1.1.1**: Initialize Git repository with main, dev, release/* branches
-- [ ] **Task 0.1.1.2**: Create `apps/api` directory for Bun.js backend
-- [ ] **Task 0.1.1.3**: Create `apps/web` directory for React dashboard
-- [ ] **Task 0.1.1.4**: Create `apps/ai-node` directory for local inference + FL client
-- [ ] **Task 0.1.1.5**: Create `infra/docker` directory for docker-compose and k8s manifests
-- [ ] **Task 0.1.1.6**: Create `infra/db` directory for Postgres & MinIO schemas
-- [ ] **Task 0.1.1.7**: Create `docs/` directory for architecture, SOPs, diagrams
-- [ ] **Task 0.1.1.8**: Set up monorepo tooling (Turborepo or Nx)
-- [ ] **Task 0.1.1.9**: Configure shared TypeScript config
-- [ ] **Task 0.1.1.10**: Create root package.json with workspace configuration
-
----
-
-**Task 0.1.2** - Initialize Git Standards | **P0** | **Status:** [ ] Not Started
-
-- [ ] **Task 0.1.2.1**: Configure conventional commits (feat, fix, docs, etc.)
-- [ ] **Task 0.1.2.2**: Set up branch protection rules for main
-- [ ] **Task 0.1.2.3**: Create CODEOWNERS file for Forest Dept roles
-- [ ] **Task 0.1.2.4**: Add .gitignore for Node.js, Bun, Docker
-- [ ] **Task 0.1.2.5**: Set up pre-commit hooks (Husky)
-- [ ] **Task 0.1.2.6**: Configure commit message linting
-- [ ] **Task 0.1.2.7**: Create PR template
-- [ ] **Task 0.1.2.8**: Document Git workflow in docs/
+**Subtasks:**
+- [x] 0.1.1: Initialize Git repository with main, dev, release/* branches
+- [x] 0.1.2: Create `apps/api` (Bun.js), `apps/web` (React), `apps/ai-node` (Bun + YOLOv8 + Flower)
+- [x] 0.1.3: Create `infra/docker` for docker-compose and k8s manifests
+- [x] 0.1.4: Create `infra/db` for Postgres & MinIO schemas
+- [x] 0.1.5: Set up monorepo tooling (Turborepo)
+- [x] 0.1.6: Configure shared TypeScript config
+- [x] 0.1.7: Create root package.json with workspace configuration
+- [x] 0.1.8: Create `docs/` directory for architecture, SOPs, diagrams
 
 ---
 
-**Task 0.1.3** - Development Environment Setup | **P0** | **Status:** [ ] Not Started
+### 0.2 Git Standards & Workflow (P0)
 
-- [ ] **Task 0.1.3.1**: Install Bun.js runtime (latest stable)
-- [ ] **Task 0.1.3.2**: Configure VS Code workspace settings
-- [ ] **Task 0.1.3.3**: Install recommended VS Code extensions (ESLint, Prettier, etc.)
-- [ ] **Task 0.1.3.4**: Set up EditorConfig for consistent formatting
-- [ ] **Task 0.1.3.5**: Configure ESLint for TypeScript
-- [ ] **Task 0.1.3.6**: Configure Prettier
-- [ ] **Task 0.1.3.7**: Create development environment documentation
+**Status:** [x] Complete  
+**Owner:** DevOps Team  
+**Completed:** Jan 31, 2026
+
+**Subtasks:**
+- [x] 0.2.1: Configure conventional commits (feat, fix, docs, etc.)
+- [x] 0.2.2: Set up branch protection rules for main (dev branch created)
+- [x] 0.2.3: Create CODEOWNERS file for Forest Dept roles
+- [x] 0.2.4: Add .gitignore for Node.js, Bun, Docker
+- [x] 0.2.5: Set up pre-commit hooks (Husky)
+- [x] 0.2.6: Configure commit message linting
+- [x] 0.2.7: Create PR template
+- [x] 0.2.8: Document Git workflow in docs/GIT_WORKFLOW.md
+
+---
+
+### 0.3 Development Environment Setup (P0)
+
+**Status:** [x] Complete  
+**Owner:** All Developers  
+**Completed:** Jan 31, 2026
+
+**Subtasks:**
+- [x] 0.3.1: Install Bun.js runtime (v1.3.7 confirmed)
+- [x] 0.3.2: Configure VS Code workspace settings
+- [x] 0.3.3: Install recommended VS Code extensions (ESLint, Prettier, etc.)
+- [x] 0.3.4: Set up EditorConfig for consistent formatting
+- [x] 0.3.5: Configure ESLint for TypeScript
+- [x] 0.3.6: Configure Prettier and commitlint
+- [x] 0.3.7: Set up Husky pre-commit hooks
+- [x] 0.3.8: Create development environment documentation
 
 ---
 
