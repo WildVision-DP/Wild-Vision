@@ -88,67 +88,67 @@
 
 ### 1.1 Role Model (STRICT HIERARCHY)
 
-**Task 1.1.1** - Design RBAC Schema | **P0** | **Status:** [ ] Not Started
+**Task 1.1.1** - Design RBAC Schema | **P0** | **Status:** [x] Complete
 
-- [ ] **Task 1.1.1.1**: Create roles table (id, name, description, level)
-- [ ] **Task 1.1.1.2**: Define 4 roles: Admin (Global), Divisional Officer, Range Officer, Ground Staff
-- [ ] **Task 1.1.1.3**: Create permissions table (id, resource, action, description)
-- [ ] **Task 1.1.1.4**: Create role_permissions junction table
-- [ ] **Task 1.1.1.5**: Design role inheritance matrix (Admin ⊇ Divisional ⊇ Range ⊇ Ground)
-- [ ] **Task 1.1.1.6**: Create users table with role_id foreign key
-- [ ] **Task 1.1.1.7**: Add division_id and range_id to users for scope limiting
-- [ ] **Task 1.1.1.8**: Document permission matrix in docs/rbac.md
-- [ ] **Task 1.1.1.9**: Create SQL migration for RBAC tables
-- [ ] **Task 1.1.1.10**: Add indexes for performance (role_id, user_id)
-
----
-
-**Task 1.1.2** - Implement Authentication | **P0** | **Status:** [ ] Not Started
-
-- [ ] **Task 1.1.2.1**: Install JWT library for Bun.js
-- [ ] **Task 1.1.2.2**: Create password hashing utility (bcrypt or argon2)
-- [ ] **Task 1.1.2.3**: Implement JWT token generation (access + refresh)
-- [ ] **Task 1.1.2.4**: Set token expiry (access: 1h, refresh: 7d)
-- [ ] **Task 1.1.2.5**: Create POST /auth/register endpoint
-- [ ] **Task 1.1.2.6**: Create POST /auth/login endpoint
-- [ ] **Task 1.1.2.7**: Create POST /auth/refresh endpoint
-- [ ] **Task 1.1.2.8**: Create POST /auth/logout endpoint
-- [ ] **Task 1.1.2.9**: Implement device binding for ground staff (device fingerprint)
-- [ ] **Task 1.1.2.10**: Create session audit trail table
-- [ ] **Task 1.1.2.11**: Log all login/logout events with IP, device info
-- [ ] **Task 1.1.2.12**: Add rate limiting to auth endpoints (5 req/min)
+- [x] **Task 1.1.1.1**: Create roles table (id, name, description, level)
+- [x] **Task 1.1.1.2**: Define 4 roles: Admin (Global), Divisional Officer, Range Officer, Ground Staff
+- [x] **Task 1.1.1.3**: Create permissions table (id, resource, action, description)
+- [x] **Task 1.1.1.4**: Create role_permissions junction table
+- [x] **Task 1.1.1.5**: Design role inheritance matrix (Admin ⊇ Divisional ⊇ Range ⊇ Ground)
+- [x] **Task 1.1.1.6**: Create users table with role_id foreign key
+- [x] **Task 1.1.1.7**: Add division_id and range_id to users for scope limiting
+- [x] **Task 1.1.1.8**: Document permission matrix in docs/rbac.md
+- [x] **Task 1.1.1.9**: Create SQL migration for RBAC tables
+- [x] **Task 1.1.1.10**: Add indexes for performance (role_id, user_id)
 
 ---
 
-**Task 1.1.3** - Create Auth Middleware | **P0** | **Status:** [ ] Not Started
+**Task 1.1.2** - Implement Authentication | **P0** | **Status:** [x] Complete
 
-- [ ] **Task 1.1.3.1**: Create JWT verification middleware
-- [ ] **Task 1.1.3.2**: Extract token from Authorization header or cookie
-- [ ] **Task 1.1.3.3**: Validate token signature and expiry
-- [ ] **Task 1.1.3.4**: Load user from database and attach to request context
-- [ ] **Task 1.1.3.5**: Create role-based access control middleware
-- [ ] **Task 1.1.3.6**: Implement @requireAuth decorator
-- [ ] **Task 1.1.3.7**: Implement @requireRole(role) decorator
-- [ ] **Task 1.1.3.8**: Implement @requirePermission(resource, action) decorator
-- [ ] **Task 1.1.3.9**: Add scope checking (division/range access)
-- [ ] **Task 1.1.3.10**: Handle unauthorized access (401/403 responses)
+- [x] **Task 1.1.2.1**: Install JWT library for Bun.js
+- [x] **Task 1.1.2.2**: Create password hashing utility (bcrypt or argon2)
+- [x] **Task 1.1.2.3**: Implement JWT token generation (access + refresh)
+- [x] **Task 1.1.2.4**: Set token expiry (access: 1h, refresh: 7d)
+- [x] **Task 1.1.2.5**: Create POST /auth/register endpoint
+- [x] **Task 1.1.2.6**: Create POST /auth/login endpoint
+- [x] **Task 1.1.2.7**: Create POST /auth/refresh endpoint
+- [x] **Task 1.1.2.8**: Create POST /auth/logout endpoint
+- [x] **Task 1.1.2.9**: Implement device binding for ground staff (device fingerprint)
+- [x] **Task 1.1.2.10**: Create session audit trail table
+- [x] **Task 1.1.2.11**: Log all login/logout events with IP, device info
+- [x] **Task 1.1.2.12**: Add rate limiting to auth endpoints (5 req/min)
 
 ---
 
-**Task 1.1.4** - Build Auth UI | **P0** | **Status:** [ ] Not Started
+**Task 1.1.3** - Create Auth Middleware | **P0** | **Status:** [x] Complete
 
-- [ ] **Task 1.1.4.1**: Create login page component (React)
-- [ ] **Task 1.1.4.2**: Add email and password input fields
-- [ ] **Task 1.1.4.3**: Add form validation (email format, password strength)
-- [ ] **Task 1.1.4.4**: Implement login API call
-- [ ] **Task 1.1.4.5**: Store tokens in httpOnly cookies or localStorage
-- [ ] **Task 1.1.4.6**: Create registration page (if needed)
-- [ ] **Task 1.1.4.7**: Create password reset flow
-- [ ] **Task 1.1.4.8**: Add loading states and error messages
-- [ ] **Task 1.1.4.9**: Implement auto-redirect after login
-- [ ] **Task 1.1.4.10**: Create protected route wrapper component
-- [ ] **Task 1.1.4.11**: Add role-based UI rendering
-- [ ] **Task 1.1.4.12**: Style with modern UI library (shadcn/ui or similar)
+- [x] **Task 1.1.3.1**: Create JWT verification middleware
+- [x] **Task 1.1.3.2**: Extract token from Authorization header or cookie
+- [x] **Task 1.1.3.3**: Validate token signature and expiry
+- [x] **Task 1.1.3.4**: Load user from database and attach to request context
+- [x] **Task 1.1.3.5**: Create role-based access control middleware
+- [x] **Task 1.1.3.6**: Implement @requireAuth decorator
+- [x] **Task 1.1.3.7**: Implement @requireRole(role) decorator
+- [x] **Task 1.1.3.8**: Implement @requirePermission(resource, action) decorator
+- [x] **Task 1.1.3.9**: Add scope checking (division/range access)
+- [x] **Task 1.1.3.10**: Handle unauthorized access (401/403 responses)
+
+---
+
+**Task 1.1.4** - Build Auth UI | **P0** | **Status:** [x] Complete
+
+- [x] **Task 1.1.4.1**: Create login page component (React)
+- [x] **Task 1.1.4.2**: Add email and password input fields
+- [x] **Task 1.1.4.3**: Add form validation (email format, password strength)
+- [x] **Task 1.1.4.4**: Implement login API call
+- [x] **Task 1.1.4.5**: Store tokens in httpOnly cookies or localStorage
+- [x] **Task 1.1.4.6**: Create registration page (if needed)
+- [x] **Task 1.1.4.7**: Create password reset flow
+- [x] **Task 1.1.4.8**: Add loading states and error messages
+- [x] **Task 1.1.4.9**: Implement auto-redirect after login
+- [x] **Task 1.1.4.10**: Create protected route wrapper component
+- [x] **Task 1.1.4.11**: Add role-based UI rendering
+- [x] **Task 1.1.4.12**: Style with modern UI library (shadcn/ui or similar)
 
 ---
 
@@ -156,67 +156,67 @@
 
 ### 2.1 Camera Lifecycle
 
-**Task 2.1.1** - Camera Master Model | **P0** | **Status:** [ ] Not Started
+**Task 2.1.1** - Camera Master Model | **P0** | **Status:** [x] Complete
 
-- [ ] **Task 2.1.1.1**: Create cameras table with PostGIS geometry column
-- [ ] **Task 2.1.1.2**: Add camera_id (Gov-issued unique identifier)
-- [ ] **Task 2.1.1.3**: Add division_id, range_id, beat_id foreign keys
-- [ ] **Task 2.1.1.4**: Add latitude/longitude columns (POINT geometry type)
-- [ ] **Task 2.1.1.5**: Add install_date, status (active/inactive/maintenance)
-- [ ] **Task 2.1.1.6**: Add camera model, serial number fields
-- [ ] **Task 2.1.1.7**: Create GIST spatial index on geometry column
-- [ ] **Task 2.1.1.8**: Add validation for GPS coordinates (India bounds)
-- [ ] **Task 2.1.1.9**: Create SQL migration for cameras table
-- [ ] **Task 2.1.1.10**: Document camera data model in docs/
+- [x] **Task 2.1.1.1**: Create cameras table with PostGIS geometry column
+- [x] **Task 2.1.1.2**: Add camera_id (Gov-issued unique identifier)
+- [x] **Task 2.1.1.3**: Add division_id, range_id, beat_id foreign keys
+- [x] **Task 2.1.1.4**: Add latitude/longitude columns (POINT geometry type)
+- [x] **Task 2.1.1.5**: Add install_date, status (active/inactive/maintenance)
+- [x] **Task 2.1.1.6**: Add camera model, serial number fields
+- [x] **Task 2.1.1.7**: Create GIST spatial index on geometry column
+- [x] **Task 2.1.1.8**: Add validation for GPS coordinates (India bounds)
+- [x] **Task 2.1.1.9**: Create SQL migration for cameras table
+- [x] **Task 2.1.1.10**: Document camera data model in docs/
 
 ---
 
-**Task 2.1.2** - Camera Movement Tracking | **P0** | **Status:** [ ] Not Started
+**Task 2.1.2** - Camera Movement Tracking | **P0** | **Status:** [x] Complete
 
-- [ ] **Task 2.1.2.1**: Create camera_locations table (immutable history)
-- [ ] **Task 2.1.2.2**: Add camera_id, location (POINT), valid_from, valid_to
-- [ ] **Task 2.1.2.3**: Implement temporal validity constraints
-- [ ] **Task 2.1.2.4**: Create API endpoint POST /cameras/{id}/move
-- [ ] **Task 2.1.2.5**: Validate new location (geospatial bounds check)
-- [ ] **Task 2.1.2.6**: Close current location record (set valid_to)
-- [ ] **Task 2.1.2.7**: Create new location record (set valid_from)
-- [ ] **Task 2.1.2.8**: Log camera movement in audit trail
-- [ ] **Task 2.1.2.9**: Add reason field for movement
-- [ ] **Task 2.1.2.10**: Create GET /cameras/{id}/history endpoint
+- [x] **Task 2.1.2.1**: Create camera_locations table (immutable history)
+- [x] **Task 2.1.2.2**: Add camera_id, location (POINT), valid_from, valid_to
+- [x] **Task 2.1.2.3**: Implement temporal validity constraints
+- [x] **Task 2.1.2.4**: Create API endpoint POST /cameras/{id}/move
+- [x] **Task 2.1.2.5**: Validate new location (geospatial bounds check)
+- [x] **Task 2.1.2.6**: Close current location record (set valid_to)
+- [x] **Task 2.1.2.7**: Create new location record (set valid_from)
+- [x] **Task 2.1.2.8**: Log camera movement in audit trail
+- [x] **Task 2.1.2.9**: Add reason field for movement
+- [x] **Task 2.1.2.10**: Create GET /cameras/{id}/history endpoint
 
 ---
 
 ### 2.2 Forest Geography
 
-**Task 2.2.1** - Administrative Boundaries | **P0** | **Status:** [ ] Not Started
+**Task 2.2.1** - Administrative Boundaries | **P0** | **Status:** [x] Complete
 
-- [ ] **Task 2.2.1.1**: Create divisions table with POLYGON geometry
-- [ ] **Task 2.2.1.2**: Create ranges table with POLYGON geometry
-- [ ] **Task 2.2.1.3**: Create beats table with POLYGON geometry
-- [ ] **Task 2.2.1.4**: Import Forest Department boundary data (GeoJSON/Shapefile)
-- [ ] **Task 2.2.1.5**: Validate polygon geometries (no self-intersections)
-- [ ] **Task 2.2.1.6**: Create spatial indexes on all geometry columns
-- [ ] **Task 2.2.1.7**: Implement containment queries (point in polygon)
-- [ ] **Task 2.2.1.8**: Add boundary metadata (name, area, perimeter)
-- [ ] **Task 2.2.1.9**: Create GET /geography/divisions endpoint
-- [ ] **Task 2.2.1.10**: Create GET /geography/ranges endpoint
-- [ ] **Task 2.2.1.11**: Create GET /geography/beats endpoint
+- [x] **Task 2.2.1.1**: Create divisions table with POLYGON geometry
+- [x] **Task 2.2.1.2**: Create ranges table with POLYGON geometry
+- [x] **Task 2.2.1.3**: Create beats table with POLYGON geometry
+- [x] **Task 2.2.1.4**: Import Forest Department boundary data (GeoJSON/Shapefile)
+- [x] **Task 2.2.1.5**: Validate polygon geometries (no self-intersections)
+- [x] **Task 2.2.1.6**: Create spatial indexes on all geometry columns
+- [x] **Task 2.2.1.7**: Implement containment queries (point in polygon)
+- [x] **Task 2.2.1.8**: Add boundary metadata (name, area, perimeter)
+- [x] **Task 2.2.1.9**: Create GET /geography/divisions endpoint
+- [x] **Task 2.2.1.10**: Create GET /geography/ranges endpoint
+- [x] **Task 2.2.1.11**: Create GET /geography/beats endpoint
 
 ---
 
-**Task 2.2.2** - Google Maps Integration | **P1** | **Status:** [ ] Not Started
+**Task 2.2.2** - Google Maps Integration | **P1** | **Status:** [x] Complete
 
-- [ ] **Task 2.2.2.1**: Set up Google Maps API key
-- [ ] **Task 2.2.2.2**: Install @googlemaps/js-api-loader
-- [ ] **Task 2.2.2.3**: Create map component in React
-- [ ] **Task 2.2.2.4**: Display camera locations as markers
-- [ ] **Task 2.2.2.5**: Implement heatmap layer for sightings
-- [ ] **Task 2.2.2.6**: Add marker clustering for camera density
-- [ ] **Task 2.2.2.7**: Display administrative boundaries as polygons
-- [ ] **Task 2.2.2.8**: Add custom map styles (forest theme)
-- [ ] **Task 2.2.2.9**: Implement click handlers for markers
-- [ ] **Task 2.2.2.10**: Add info windows with camera/sighting details
-- [ ] **Task 2.2.2.11**: Optimize map performance for large datasets
+- [x] **Task 2.2.2.1**: Set up Google Maps API key
+- [x] **Task 2.2.2.2**: Install @googlemaps/js-api-loader
+- [x] **Task 2.2.2.3**: Create map component in React
+- [x] **Task 2.2.2.4**: Display camera locations as markers
+- [x] **Task 2.2.2.5**: Implement heatmap layer for sightings
+- [x] **Task 2.2.2.6**: Add marker clustering for camera density
+- [x] **Task 2.2.2.7**: Display administrative boundaries as polygons
+- [x] **Task 2.2.2.8**: Add custom map styles (forest theme)
+- [x] **Task 2.2.2.9**: Implement click handlers for markers
+- [x] **Task 2.2.2.10**: Add info windows with camera/sighting details
+- [x] **Task 2.2.2.11**: Optimize map performance for large datasets
 
 ---
 

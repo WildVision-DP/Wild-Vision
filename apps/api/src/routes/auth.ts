@@ -13,8 +13,9 @@ function hashToken(token: string): string {
 
 // Helper to get client info
 function getClientInfo(c: any) {
+    const ip = c.req.header('x-forwarded-for') || c.req.header('x-real-ip');
     return {
-        ipAddress: c.req.header('x-forwarded-for') || c.req.header('x-real-ip') || 'unknown',
+        ipAddress: ip || null, // Use null for INET type compatibility
         userAgent: c.req.header('user-agent') || 'unknown',
         deviceFingerprint: c.req.header('x-device-fingerprint') || null,
     };

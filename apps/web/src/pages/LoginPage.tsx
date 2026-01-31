@@ -14,9 +14,10 @@ export default function LoginPage() {
         e.preventDefault();
         setError('');
         setLoading(true);
+        console.log('Login: Starting with email:', email);
 
         try {
-            const response = await fetch('/api/auth/login', {
+            const response = await fetch('http://localhost:4000/auth/login', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -24,20 +25,45 @@ export default function LoginPage() {
                 body: JSON.stringify({ email, password }),
             });
 
-            const data = await response.json();
+            console.log('Login: Response status:', response.status);
+            console.log('Login: Response headers:', Object.fromEntries(response.headers.entries()));
 
             if (!response.ok) {
-                throw new Error(data.error || 'Login failed');
+                const errorText = await response.text();
+                console.error('Login: Error response:', errorText);
+                let errorMessage = 'Login failed';
+                try {
+                    const errorData = JSON.parse(errorText);
+                    errorMessage = errorData.error || 'Login failed';
+                } catch {
+                    errorMessage = errorText || 'Login failed';
+                }
+                throw new Error(errorMessage);
+            }
+
+            const responseText = await response.text();
+            console.log('Login: Raw response:', responseText);
+
+            let data;
+            try {
+                data = JSON.parse(responseText);
+                console.log('Login: Parsed data:', data);
+            } catch (parseError) {
+                console.error('Login: JSON parse error:', parseError);
+                throw new Error('Invalid response from server');
             }
 
             // Store tokens
+            console.log('Login: Storing tokens...');
             localStorage.setItem('accessToken', data.accessToken);
             localStorage.setItem('refreshToken', data.refreshToken);
             localStorage.setItem('user', JSON.stringify(data.user));
 
+            console.log('Login: Success, redirecting...');
             // Redirect to dashboard
             window.location.href = '/dashboard';
         } catch (err) {
+            console.error('Login: Error:', err);
             setError(err instanceof Error ? err.message : 'Login failed');
         } finally {
             setLoading(false);
@@ -58,8 +84,50 @@ export default function LoginPage() {
                         Wildlife Surveillance & Movement Analytics Platform
                     </CardDescription>
                 </CardHeader>
-                <CardContent>
-                    <form onSubmit={handleSubmit} className="space-y-4">
+                <CardContent>                    {error && (
+                        <div className="p-3 bg-red-50 border border-red-200 rounded-md mb-4">
+                            <p className="text-sm text-red-700">{error}</p>
+                        </div>
+                    )}
+
+                    {/* Quick Login for Testing */}
+                    <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
+                        <p className="text-sm text-blue-700 mb-2">Quick Admin Login:</p>
+                        <Button 
+                            type="button"
+                            onClick={async () => {
+                                setEmail('admin@wildvision.gov.in');
+                                setPassword('admin123');
+                                setTimeout(async () => {
+                                    setError('');
+                                    setLoading(true);
+                                    try {
+                                        const response = await fetch('http://localhost:4000/auth/login', {
+                                            method: 'POST',
+                                            headers: { 'Content-Type': 'application/json' },
+                                            body: JSON.stringify({ email: 'admin@wildvision.gov.in', password: 'admin123' }),
+                                        });
+                                        if (!response.ok) {
+                                            throw new Error('Login failed');
+                                        }
+                                        const data = await response.json();
+                                        localStorage.setItem('accessToken', data.accessToken);
+                                        localStorage.setItem('refreshToken', data.refreshToken);
+                                        localStorage.setItem('user', JSON.stringify(data.user));
+                                        window.location.href = '/dashboard';
+                                    } catch (err) {
+                                        setError(err instanceof Error ? err.message : 'Login failed');
+                                    } finally {
+                                        setLoading(false);
+                                    }
+                                }, 100);
+                            }}
+                            className="w-full bg-blue-600 hover:bg-blue-700"
+                            disabled={loading}
+                        >
+                            🚀 Quick Login as Admin
+                        </Button>
+                    </div>                    <form onSubmit={handleSubmit} className="space-y-4">
                         <div className="space-y-2">
                             <Label htmlFor="email">Email</Label>
                             <Input

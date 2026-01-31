@@ -5,6 +5,8 @@ import authRoutes from './routes/auth';
 import testRoutes from './routes/test';
 import cameraRoutes from './routes/cameras';
 import geographyRoutes from './routes/geography';
+import userRoutes from './routes/users';
+import brandRoutes from './routes/brands';
 
 const app = new Hono();
 
@@ -39,6 +41,12 @@ app.route('/cameras', cameraRoutes);
 
 // Geography routes
 app.route('/geography', geographyRoutes);
+
+// User routes
+app.route('/users', userRoutes);
+
+// Brand routes
+app.route('/brands', brandRoutes);
 
 const port = process.env.API_PORT || 4000;
 
