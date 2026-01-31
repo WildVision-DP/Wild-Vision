@@ -1,10 +1,15 @@
 import sql from './connection';
 import { readFileSync } from 'fs';
-import { join } from 'path';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 export async function runMigration(migrationFile: string) {
     try {
-        const migrationPath = join(process.cwd(), '../../infra/db/migrations', migrationFile);
+        // Correct path resolution from apps/api/src/db to infra/db/migrations
+        const migrationPath = join(__dirname, '../../../../infra/db/migrations', migrationFile);
         const migrationSQL = readFileSync(migrationPath, 'utf-8');
 
         console.log(`🔄 Running migration: ${migrationFile}`);
@@ -20,6 +25,7 @@ export async function runMigration(migrationFile: string) {
 export async function runAllMigrations() {
     const migrations = [
         '001_create_users_roles.sql',
+        '002_create_forest_hierarchy.sql',
     ];
 
     for (const migration of migrations) {
@@ -31,6 +37,7 @@ export async function runAllMigrations() {
     }
 
     console.log('✅ All migrations completed successfully');
+    await sql.end();
 }
 
 // Run migrations if this file is executed directly
