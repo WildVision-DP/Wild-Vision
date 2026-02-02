@@ -5,17 +5,19 @@ import { Card } from '@/components/ui/card';
 import Modal from '@/components/ui/Modal';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import AlertDialog from '@/components/ui/AlertDialog';
+import CircleForm from '@/components/CircleForm';
 import DivisionForm from '@/components/DivisionForm';
 import RangeForm from '@/components/RangeForm';
 import BeatForm from '@/components/BeatForm';
 
 export default function GeographyPage() {
+    const [circles, setCircles] = useState<any[]>([]);
     const [divisions, setDivisions] = useState<any[]>([]);
     const [ranges, setRanges] = useState<any[]>([]);
     const [beats, setBeats] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-    const [activeTab, setActiveTab] = useState<'divisions' | 'ranges' | 'beats'>('divisions');
+    const [activeTab, setActiveTab] = useState<'circles' | 'divisions' | 'ranges' | 'beats'>('circles');
     
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingItem, setEditingItem] = useState<any>(null);
@@ -27,6 +29,7 @@ export default function GeographyPage() {
 
     // Debug logging
     console.log('GeographyPage render - State:', {
+        circles: Array.isArray(circles) ? circles.length : 'not array',
         divisions: Array.isArray(divisions) ? divisions.length : 'not array',
         ranges: Array.isArray(ranges) ? ranges.length : 'not array', 
         beats: Array.isArray(beats) ? beats.length : 'not array',
@@ -60,18 +63,29 @@ export default function GeographyPage() {
             console.log('Geography: Token present:', !!token);
             const headers = { 'Authorization': `Bearer ${token}` };
 
-            const [divisionsRes, rangesRes, beatsRes] = await Promise.all([
+            const [circlesRes, divisionsRes, rangesRes, beatsRes] = await Promise.all([
+                fetch('http://localhost:4000/geography/circles', { headers }),
                 fetch('http://localhost:4000/geography/divisions', { headers }),
                 fetch('http://localhost:4000/geography/ranges', { headers }),
                 fetch('http://localhost:4000/geography/beats', { headers })
             ]);
 
             console.log('Geography: Response statuses:', {
+                circles: circlesRes.status,
                 divisions: divisionsRes.status,
                 ranges: rangesRes.status,
                 beats: beatsRes.status
             });
 
+            if (circlesRes.ok) {
+                const data = await circlesRes.json();
+                console.log('Geography: Circles data:', data);
+                setCircles(Array.isArray(data.circles) ? data.circles : []);
+            } else {
+                const errorText = await circlesRes.text();
+                console.error('Failed to fetch circles:', errorText);
+                setCircles([]);
+            }
             if (divisionsRes.ok) {
                 const data = await divisionsRes.json();
                 console.log('Geography: Divisions data:', data);
@@ -115,7 +129,7 @@ export default function GeographyPage() {
     const handleCreate = async (data: any) => {
         try {
             const token = localStorage.getItem('accessToken');
-            const endpoint = activeTab === 'divisions' ? 'divisions' : activeTab === 'ranges' ? 'ranges' : 'beats';
+            const endpoint = activeTab === 'circles' ? 'circles' : activeTab === 'divisions' ? 'divisions' : activeTab === 'ranges' ? 'ranges' : 'beats';
             const response = await fetch(`http://localhost:4000/geography/${endpoint}`, {
                 method: 'POST',
                 headers: {
@@ -142,7 +156,7 @@ export default function GeographyPage() {
         if (!editingItem) return;
         try {
             const token = localStorage.getItem('accessToken');
-            const endpoint = activeTab === 'divisions' ? 'divisions' : activeTab === 'ranges' ? 'ranges' : 'beats';
+            const endpoint = activeTab === 'circles' ? 'circles' : activeTab === 'divisions' ? 'divisions' : activeTab === 'ranges' ? 'ranges' : 'beats';
             const response = await fetch(`http://localhost:4000/geography/${endpoint}/${editingItem.id}`, {
                 method: 'PUT',
                 headers: {
@@ -205,6 +219,51 @@ export default function GeographyPage() {
         setEditingItem(item);
         setIsModalOpen(true);
     };
+
+    const renderCircles = () => (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {(circles || []).map((circle: any) => (
+                <Card key={circle.id} className="p-6 hover:shadow-lg transition-shadow">
+                    <div className="flex items-start justify-between mb-4">
+                        <div className="flex items-center gap-3">
+                            <div className="p-2 bg-purple-100 rounded-lg">
+                                <Layers className="w-5 h-5 text-purple-700" />
+                            </div>
+                            <div>
+                                <h3 className="font-semibold text-lg text-gray-900">{circle.name}</h3>
+                                <p className="text-sm text-gray-500">Code: {circle.code}</p>
+                            </div>
+                        </div>
+                        {canManageGeography && currentUser.role !== 'Ground Staff' && (
+                            <div className="flex gap-1">
+                                <button onClick={() => openEditModal(circle)} className="p-1 text-blue-600 hover:bg-blue-50 rounded">
+                                    <Edit2 size={16} />
+                                </button>
+                                <button onClick={() => confirmDelete('circles', circle.id)} className="p-1 text-red-600 hover:bg-red-50 rounded">
+                                    <Trash2 size={16} />
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                    <div className="space-y-2 text-sm">
+                        <div className="flex justify-between">
+                            <span className="text-gray-600">Area:</span>
+                            <span className="font-medium">{typeof circle.area_sq_km === 'number' ? circle.area_sq_km.toFixed(2) : (parseFloat(circle.area_sq_km) || 0).toFixed(2)} km²</span>
+                        </div>
+                        <div className="flex justify-between">
+                            <span className="text-gray-600">Perimeter:</span>
+                            <span className="font-medium">{typeof circle.perimeter_km === 'number' ? circle.perimeter_km.toFixed(2) : (parseFloat(circle.perimeter_km) || 0).toFixed(2)} km</span>
+                        </div>
+                    </div>
+                </Card>
+            ))}
+            {(circles || []).length === 0 && (
+                <div className="col-span-full text-center py-12 text-gray-500">
+                    No circles found
+                </div>
+            )}
+        </div>
+    );
 
     const renderDivisions = () => {
         const safeDivisions = Array.isArray(divisions) ? divisions : [];
@@ -387,16 +446,51 @@ export default function GeographyPage() {
                     <h1 className="text-3xl font-bold text-gray-900 mb-2">Geography Management</h1>
                     <p className="text-gray-600">Manage forest administrative boundaries</p>
                 </div>
-                {canManageGeography && (
-                    <Button onClick={openCreateModal} className="flex items-center gap-2">
-                        <Plus size={20} />
-                        Add {activeTab === 'divisions' ? 'Division' : activeTab === 'ranges' ? 'Range' : 'Beat'}
-                    </Button>
-                )}
+                <div className="flex items-center gap-4">
+                    <div className="bg-white border border-gray-200 rounded-lg px-4 py-2 shadow-sm">
+                        <div className="flex items-center gap-6 text-sm">
+                            <div className="text-center">
+                                <div className="text-2xl font-bold text-green-700">{(circles || []).length}</div>
+                                <div className="text-xs text-gray-500">Circles</div>
+                            </div>
+                            <div className="w-px h-8 bg-gray-200"></div>
+                            <div className="text-center">
+                                <div className="text-2xl font-bold text-blue-700">{(divisions || []).length}</div>
+                                <div className="text-xs text-gray-500">Divisions</div>
+                            </div>
+                            <div className="w-px h-8 bg-gray-200"></div>
+                            <div className="text-center">
+                                <div className="text-2xl font-bold text-purple-700">{(ranges || []).length}</div>
+                                <div className="text-xs text-gray-500">Ranges</div>
+                            </div>
+                            <div className="w-px h-8 bg-gray-200"></div>
+                            <div className="text-center">
+                                <div className="text-2xl font-bold text-amber-700">{(beats || []).length}</div>
+                                <div className="text-xs text-gray-500">Beats</div>
+                            </div>
+                        </div>
+                    </div>
+                    {canManageGeography && (
+                        <Button onClick={openCreateModal} className="flex items-center gap-2">
+                            <Plus size={20} />
+                            Add {activeTab === 'circles' ? 'Circle' : activeTab === 'divisions' ? 'Division' : activeTab === 'ranges' ? 'Range' : 'Beat'}
+                        </Button>
+                    )}
+                </div>
             </div>
 
             {/* Tabs */}
             <div className="flex gap-4 mb-6 border-b border-gray-200">
+                <button
+                    onClick={() => setActiveTab('circles')}
+                    className={`px-4 py-2 font-medium transition-colors border-b-2 ${
+                        activeTab === 'circles'
+                            ? 'border-green-700 text-green-700'
+                            : 'border-transparent text-gray-600 hover:text-gray-900'
+                    }`}
+                >
+                    Circles ({(circles || []).length})
+                </button>
                 <button
                     onClick={() => setActiveTab('divisions')}
                     className={`px-4 py-2 font-medium transition-colors border-b-2 ${
@@ -431,6 +525,7 @@ export default function GeographyPage() {
 
             {/* Content */}
             <div>
+                {activeTab === 'circles' && renderCircles()}
                 {activeTab === 'divisions' && renderDivisions()}
                 {activeTab === 'ranges' && renderRanges()}
                 {activeTab === 'beats' && renderBeats()}
@@ -440,11 +535,19 @@ export default function GeographyPage() {
             <Modal
                 isOpen={isModalOpen}
                 onClose={() => { setIsModalOpen(false); setEditingItem(null); }}
-                title={`${editingItem ? 'Edit' : 'Add'} ${activeTab === 'divisions' ? 'Division' : activeTab === 'ranges' ? 'Range' : 'Beat'}`}
+                title={`${editingItem ? 'Edit' : 'Add'} ${activeTab === 'circles' ? 'Circle' : activeTab === 'divisions' ? 'Division' : activeTab === 'ranges' ? 'Range' : 'Beat'}`}
             >
+                {activeTab === 'circles' && (
+                    <CircleForm
+                        circle={editingItem}
+                        onSubmit={editingItem ? handleUpdate : handleCreate}
+                        onCancel={() => { setIsModalOpen(false); setEditingItem(null); }}
+                    />
+                )}
                 {activeTab === 'divisions' && (
                     <DivisionForm
                         initialData={editingItem}
+                        circles={circles}
                         onSubmit={editingItem ? handleUpdate : handleCreate}
                         onCancel={() => { setIsModalOpen(false); setEditingItem(null); }}
                     />

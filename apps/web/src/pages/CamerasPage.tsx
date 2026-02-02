@@ -10,7 +10,7 @@ import MapDiagnostics from '../components/MapDiagnostics';
 import { defaultTestCameras, testGoogleMapsAPI } from '../utils/mapTest';
 
 export default function CamerasPage() {
-    const [cameras, setCameras] = useState([]);
+    const [cameras, setCameras] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [viewMode, setViewMode] = useState<'map' | 'list'>('map');
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -19,8 +19,10 @@ export default function CamerasPage() {
     const [alert, setAlert] = useState<{ isOpen: boolean; title: string; message: string; variant: 'error' | 'success' }>({ isOpen: false, title: '', message: '', variant: 'error' });
     const [testMode, setTestMode] = useState(false);
     const [showDiagnostics, setShowDiagnostics] = useState(false);
+    const [mounted, setMounted] = useState(false);
 
     useEffect(() => {
+        setMounted(true);
         fetchCameras();
         // Test Google Maps API on load
         testMapAPI();
@@ -39,21 +41,41 @@ export default function CamerasPage() {
     };
 
     const fetchCameras = async () => {
-        setLoading(true);
         try {
+            setLoading(true);
             const token = localStorage.getItem('accessToken');
+            
+            if (!token) {
+                console.warn('No access token found');
+                setCameras([]);
+                setLoading(false);
+                return;
+            }
+            
+            console.log('Fetching cameras...');
             const response = await fetch('http://localhost:4000/cameras', {
                 headers: {
                     'Authorization': `Bearer ${token}`,
                 },
             });
 
+            console.log('Camera fetch response status:', response.status);
             if (response.ok) {
                 const data = await response.json();
-                setCameras(data.cameras);
+                console.log('Camera data received:', data);
+                const cameraData = data.cameras || [];
+                setCameras(cameraData);
+                console.log('Cameras set to state:', cameraData.length, 'cameras');
+            } else {
+                const errorText = await response.text();
+                console.error('Failed to fetch cameras - Response:', errorText);
+                setCameras([]);
+                setAlert({ isOpen: true, title: 'Error', message: 'Failed to load camera data', variant: 'error' });
             }
         } catch (error) {
             console.error('Failed to fetch cameras:', error);
+            setCameras([]);
+            setAlert({ isOpen: true, title: 'Network Error', message: 'Unable to connect to server', variant: 'error' });
         } finally {
             setLoading(false);
         }
@@ -76,11 +98,19 @@ export default function CamerasPage() {
                 closeModal();
                 setAlert({ isOpen: true, title: 'Success', message: 'Camera created successfully', variant: 'success' });
             } else {
-                const error = await response.json();
-                setAlert({ isOpen: true, title: 'Error', message: error.error || 'Failed to create camera', variant: 'error' });
+                let errorMessage = 'Failed to create camera';
+                try {
+                    const error = await response.json();
+                    errorMessage = error.error || errorMessage;
+                } catch (e) {
+                    const text = await response.text();
+                    errorMessage = text || errorMessage;
+                }
+                setAlert({ isOpen: true, title: 'Error', message: errorMessage, variant: 'error' });
             }
         } catch (error) {
-            setAlert({ isOpen: true, title: 'Error', message: 'Network error. Please try again.', variant: 'error' });
+            const errorMessage = error instanceof Error ? error.message : 'Network error. Please try again.';
+            setAlert({ isOpen: true, title: 'Error', message: errorMessage, variant: 'error' });
         }
     };
 
@@ -108,13 +138,21 @@ export default function CamerasPage() {
                 closeModal();
                 setAlert({ isOpen: true, title: 'Success', message: 'Camera updated successfully', variant: 'success' });
             } else {
-                const error = await response.json();
-                console.error('CamerasPage: Update failed:', error);
-                setAlert({ isOpen: true, title: 'Error', message: error.error || 'Failed to update camera', variant: 'error' });
+                let errorMessage = 'Failed to update camera';
+                try {
+                    const error = await response.json();
+                    errorMessage = error.error || errorMessage;
+                } catch (e) {
+                    const text = await response.text();
+                    errorMessage = text || errorMessage;
+                }
+                console.error('CamerasPage: Update failed:', errorMessage);
+                setAlert({ isOpen: true, title: 'Error', message: errorMessage, variant: 'error' });
             }
         } catch (error) {
             console.error('CamerasPage: Update network error:', error);
-            setAlert({ isOpen: true, title: 'Error', message: 'Network error. Please try again.', variant: 'error' });
+            const errorMessage = error instanceof Error ? error.message : 'Network error. Please try again.';
+            setAlert({ isOpen: true, title: 'Error', message: errorMessage, variant: 'error' });
         }
     };
 
@@ -163,6 +201,10 @@ export default function CamerasPage() {
         setIsModalOpen(true);
     };
 
+    const activeCount = cameras.filter((c: any) => c.status === 'active').length;
+    const maintenanceCount = cameras.filter((c: any) => c.status === 'maintenance').length;
+    const inactiveCount = cameras.filter((c: any) => c.status === 'inactive').length;
+
     return (
         <div className="p-6 h-full flex flex-col">
             <div className="mb-6 flex justify-between items-center">
@@ -172,7 +214,26 @@ export default function CamerasPage() {
                         {loading ? 'Syncing...' : `${cameras.length} units online`}
                     </p>
                 </div>
-                <div className="flex gap-3">
+                <div className="flex items-center gap-4">
+                    <div className="bg-white border border-gray-200 rounded-lg px-4 py-2 shadow-sm">
+                        <div className="flex items-center gap-6 text-sm">
+                            <div className="text-center">
+                                <div className="text-2xl font-bold text-green-700">{activeCount}</div>
+                                <div className="text-xs text-gray-500">Active</div>
+                            </div>
+                            <div className="w-px h-8 bg-gray-200"></div>
+                            <div className="text-center">
+                                <div className="text-2xl font-bold text-yellow-700">{maintenanceCount}</div>
+                                <div className="text-xs text-gray-500">Maintenance</div>
+                            </div>
+                            <div className="w-px h-8 bg-gray-200"></div>
+                            <div className="text-center">
+                                <div className="text-2xl font-bold text-red-700">{inactiveCount}</div>
+                                <div className="text-xs text-gray-500">Inactive</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div className="flex gap-3">
                     <div className="bg-gray-100 p-1 rounded-lg flex">
                         <button
                             onClick={() => setViewMode('map')}
@@ -218,6 +279,7 @@ export default function CamerasPage() {
                     <Button onClick={openCreateModal} className="bg-green-700 hover:bg-green-800">
                         <Plus className="mr-2 h-4 w-4" /> Add Camera
                     </Button>
+                    </div>
                 </div>
             </div>
 

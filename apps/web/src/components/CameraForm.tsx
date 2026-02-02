@@ -14,6 +14,7 @@ export default function CameraForm({ initialData, onSubmit, onCancel }: CameraFo
         camera_id: '',
         brand_id: '',
         camera_name: '',
+        circle_id: '',
         division_id: '',
         range_id: '',
         beat_id: '',
@@ -24,6 +25,7 @@ export default function CameraForm({ initialData, onSubmit, onCancel }: CameraFo
     });
 
     const [brands, setBrands] = useState<any[]>([]);
+    const [circles, setCircles] = useState<any[]>([]);
     const [divisions, setDivisions] = useState<any[]>([]);
     const [ranges, setRanges] = useState<any[]>([]);
     const [beats, setBeats] = useState<any[]>([]);
@@ -31,6 +33,7 @@ export default function CameraForm({ initialData, onSubmit, onCancel }: CameraFo
 
     // Generate camera ID preview
     const selectedBrand = brands.find(b => b.id === formData.brand_id);
+    const selectedCircle = circles.find(c => c.id === formData.circle_id);
     const selectedDivision = divisions.find(d => d.id === formData.division_id);
     const selectedRange = ranges.find(r => r.id === formData.range_id);
     const selectedBeat = beats.find(b => b.id === formData.beat_id);
@@ -59,7 +62,7 @@ export default function CameraForm({ initialData, onSubmit, onCancel }: CameraFo
 
     useEffect(() => {
         fetchBrands();
-        fetchDivisions();
+        fetchCircles();
     }, []);
 
     useEffect(() => {
@@ -69,6 +72,7 @@ export default function CameraForm({ initialData, onSubmit, onCancel }: CameraFo
                 camera_id: initialData.camera_id || '',
                 brand_id: initialData.brand_id || '',
                 camera_name: initialData.camera_name || '',
+                circle_id: initialData.circle_id || '',
                 division_id: initialData.division_id || '',
                 range_id: initialData.range_id || '',
                 beat_id: initialData.beat_id || '',
@@ -79,6 +83,10 @@ export default function CameraForm({ initialData, onSubmit, onCancel }: CameraFo
             });
             console.log('CameraForm: Set form data for editing');
             // Trigger cascades if IDs exist - this will load the dropdowns with current selections
+            if (initialData.circle_id) {
+                console.log('CameraForm: Fetching divisions for circle:', initialData.circle_id);
+                fetchDivisions(initialData.circle_id);
+            }
             if (initialData.division_id) {
                 console.log('CameraForm: Fetching ranges for division:', initialData.division_id);
                 fetchRanges(initialData.division_id);
@@ -94,6 +102,7 @@ export default function CameraForm({ initialData, onSubmit, onCancel }: CameraFo
                 camera_id: '',
                 brand_id: '',
                 camera_name: '',
+                circle_id: '',
                 division_id: '',
                 range_id: '',
                 beat_id: '',
@@ -122,11 +131,29 @@ export default function CameraForm({ initialData, onSubmit, onCancel }: CameraFo
         }
     };
 
-    const fetchDivisions = async () => {
+    const fetchCircles = async () => {
+        try {
+            const token = localStorage.getItem('accessToken');
+            const res = await fetch('http://localhost:4000/geography/circles', {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setCircles(data.circles || []);
+            }
+        } catch (err) {
+            console.error('Failed to fetch circles:', err);
+        }
+    };
+
+    const fetchDivisions = async (circleId?: string) => {
         try {
             const token = localStorage.getItem('accessToken');
             console.log('Fetching divisions with token:', !!token);
-            const res = await fetch('http://localhost:4000/geography/divisions', {
+            const url = circleId 
+                ? `http://localhost:4000/geography/divisions?circle_id=${circleId}`
+                : 'http://localhost:4000/geography/divisions';
+            const res = await fetch(url, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             console.log('Divisions response status:', res.status);
@@ -179,6 +206,14 @@ export default function CameraForm({ initialData, onSubmit, onCancel }: CameraFo
         }
     };
 
+    const handleCircleChange = (circleId: string) => {
+        setFormData(prev => ({ ...prev, circle_id: circleId, division_id: '', range_id: '', beat_id: '' }));
+        setDivisions([]);
+        setRanges([]);
+        setBeats([]);
+        if (circleId) fetchDivisions(circleId);
+    };
+
     const handleDivisionChange = (divisionId: string) => {
         setFormData(prev => ({ ...prev, division_id: divisionId, range_id: '', beat_id: '' }));
         setRanges([]);
@@ -196,6 +231,12 @@ export default function CameraForm({ initialData, onSubmit, onCancel }: CameraFo
         e.preventDefault();
         setLoading(true);
         try {
+            if (!formData.brand_id || !formData.camera_name || !formData.beat_id || !formData.latitude || !formData.longitude) {
+                alert('Please select brand, enter camera name, choose beat, and set latitude/longitude.');
+                setLoading(false);
+                return;
+            }
+
             await onSubmit({
                 ...formData,
                 latitude: parseFloat(String(formData.latitude)),
@@ -309,7 +350,19 @@ export default function CameraForm({ initialData, onSubmit, onCancel }: CameraFo
                 </div>
             </div>
 
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="space-y-2">
+                    <Label htmlFor="circle">Circle</Label>
+                    <select
+                        id="circle"
+                        className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                        value={formData.circle_id}
+                        onChange={(e) => handleCircleChange(e.target.value)}
+                    >
+                        <option value="">Select Circle</option>
+                        {circles.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    </select>
+                </div>
                 <div className="space-y-2">
                     <Label htmlFor="division">Division</Label>
                     <select
@@ -317,6 +370,7 @@ export default function CameraForm({ initialData, onSubmit, onCancel }: CameraFo
                         className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                         value={formData.division_id}
                         onChange={(e) => handleDivisionChange(e.target.value)}
+                        disabled={!formData.circle_id}
                     >
                         <option value="">Select Division</option>
                         {divisions.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}

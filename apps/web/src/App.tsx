@@ -4,6 +4,7 @@ import DashboardPage from './pages/DashboardPage';
 import CamerasPage from './pages/CamerasPage';
 import UsersPage from './pages/UsersPage';
 import GeographyPage from './pages/GeographyPage';
+import WildlifeMapPage from './pages/WildlifeMapPage';
 import ProtectedRoute from './components/ProtectedRoute';
 import Layout from './components/Layout';
 import ErrorBoundary from './components/ErrorBoundary';
@@ -19,6 +20,7 @@ function App() {
                 <Route element={<ProtectedRoute><Layout /></ProtectedRoute>}>
                     <Route path="/dashboard" element={<DashboardPage />} />
                     <Route path="/cameras" element={<CamerasPage />} />
+                    <Route path="/wildlife-map" element={<WildlifeMapPage />} />
                     <Route path="/users" element={<UsersPage />} />
                     <Route path="/geography" element={
                         <ErrorBoundary>

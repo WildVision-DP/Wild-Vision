@@ -69,7 +69,6 @@ export default function RangeForm({ initialData, divisions, onSubmit, onCancel }
                     id="area_sq_km"
                     type="number"
                     step="0.0001"
-                    min="0"
                     value={formData.area_sq_km}
                     onChange={(e) => setFormData({ ...formData, area_sq_km: e.target.value })}
                     placeholder="e.g., 450.3000"
@@ -82,7 +81,6 @@ export default function RangeForm({ initialData, divisions, onSubmit, onCancel }
                     id="perimeter_km"
                     type="number"
                     step="0.0001"
-                    min="0"
                     value={formData.perimeter_km}
                     onChange={(e) => setFormData({ ...formData, perimeter_km: e.target.value })}
                     placeholder="e.g., 85.2000"

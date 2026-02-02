@@ -36,8 +36,8 @@ cameras.get('/', requireAuth, async (c) => {
     if (range_id) filters.push(sql`c.range_id = ${range_id}`);
     if (beat_id) filters.push(sql`c.beat_id = ${beat_id}`);
 
-    // Apply hierarchy restrictions for non-admin users
-    if (user.roleName !== 'Admin') {
+    // Apply hierarchy restrictions for non-admin users (but only for Role Officers, not Ground Staff)
+    if (user.roleName !== 'Admin' && user.roleName !== 'Ground Staff') {
       const [assignment] = await sql`
         SELECT division_id, range_id, beat_id 
         FROM user_assignments 

@@ -12,40 +12,53 @@ interface MapComponentProps {
         division_name?: string;
         range_name?: string;
     }>;
+    animals?: Array<{
+        id: string;
+        name: string;
+        species: string;
+        latitude: number;
+        longitude: number;
+        status?: 'active' | 'resting' | 'unknown';
+        last_seen?: string;
+    }>;
     center?: { lat: number; lng: number };
     zoom?: number;
 }
 
 export default function MapComponent({
     cameras = [],
+    animals = [],
     center = { lat: 11.8, lng: 76.6 }, // Bandipur area
     zoom = 10
 }: MapComponentProps) {
     const mapRef = useRef<HTMLDivElement>(null);
     const [map, setMap] = useState<google.maps.Map | null>(null);
-    const [markers, setMarkers] = useState<google.maps.Marker[]>([]);
+    const markersRef = useRef<google.maps.Marker[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [mapFallback, setMapFallback] = useState(false);
     const mapInitializedRef = useRef(false);
+    const activeInfoWindowRef = useRef<google.maps.InfoWindow | null>(null);
 
     const initMap = useCallback(async () => {
-        if (mapInitializedRef.current || !mapRef.current) return;
+        // Only guard against double‑init; the ref should be ready
+        if (mapInitializedRef.current) return;
 
         const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
         console.log('Initializing Google Maps...');
         console.log('API Key present:', !!apiKey);
-        
+        console.log('API Key value:', apiKey ? apiKey.substring(0, 10) + '...' : 'none');
+
         if (!apiKey || apiKey === 'your_google_maps_api_key_here') {
-            console.warn('Google Maps API key not properly configured, using fallback');
-            setMapFallback(true);
+            console.warn('Google Maps API key is missing or placeholder.');
+            setError('Google Maps is not configured. Please set VITE_GOOGLE_MAPS_API_KEY in your .env file.');
             setLoading(false);
             return;
         }
 
         try {
             mapInitializedRef.current = true;
-            
+
             const loader = new Loader({
                 apiKey,
                 version: 'weekly',
@@ -55,17 +68,16 @@ export default function MapComponent({
             });
 
             console.log('Loading Google Maps API...');
-            
-            // Set a timeout for API loading
-            const timeoutPromise = new Promise((_, reject) => {
-                setTimeout(() => reject(new Error('Google Maps API loading timeout')), 10000);
-            });
 
-            await Promise.race([
-                loader.importLibrary('maps'),
-                timeoutPromise
-            ]);
-            
+            // Safety timeout so we never get stuck on the loading screen
+            const timeoutId = setTimeout(() => {
+                console.warn('Google Maps API loading timeout – showing fallback view instead of spinner.');
+                setMapFallback(true);
+                setLoading(false);
+            }, 10000); // 10 seconds hard cap
+
+            await loader.importLibrary('maps');
+
             console.log('Google Maps API loaded successfully');
 
             if (mapRef.current) {
@@ -95,20 +107,15 @@ export default function MapComponent({
                 // Wait for map to be fully initialized
                 google.maps.event.addListenerOnce(googleMap, 'idle', () => {
                     console.log('Map fully loaded and ready');
+                    clearTimeout(timeoutId);
                     setMap(googleMap);
-                    setLoading(false);
-                });
-
-                // Handle map errors
-                google.maps.event.addListener(googleMap, 'error', (error: any) => {
-                    console.error('Google Maps error:', error);
-                    setMapFallback(true);
                     setLoading(false);
                 });
             }
         } catch (error) {
             console.error('Error loading Google Maps:', error);
             console.warn('Falling back to static map view');
+            setError('Unable to load interactive map. Showing fallback view instead.');
             setMapFallback(true);
             setLoading(false);
             mapInitializedRef.current = false;
@@ -123,33 +130,125 @@ export default function MapComponent({
         if (!map || mapFallback) return;
 
         // Clear existing markers
-        markers.forEach(marker => marker.setMap(null));
+        markersRef.current.forEach(marker => marker.setMap(null));
+        markersRef.current = [];
 
-        if (cameras.length === 0) {
+        const hasCameras = cameras.length > 0;
+        const hasAnimals = animals.length > 0;
+
+        if (!hasCameras && !hasAnimals) {
             setMarkers([]);
             return;
         }
 
-        // Calculate bounds to fit all cameras
+        // Calculate bounds to fit all entities
         const bounds = new google.maps.LatLngBounds();
 
+        const newMarkers: google.maps.Marker[] = [];
+
         // Add new markers for cameras
-        const newMarkers = cameras.map(camera => {
+        cameras.forEach((camera, index) => {
             const position = { lat: camera.latitude, lng: camera.longitude };
             bounds.extend(position);
+
+            // Proper camera icon SVG path (camera with lens)
+            const cameraIconPath = 'M9 2L7.17 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2h-3.17L15 2H9zm3 15c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5z';
+
+            // Status-based colors
+            const statusColor = camera.status === 'active' ? '#22c55e' : 
+                               camera.status === 'maintenance' ? '#eab308' : '#ef4444';
 
             const marker = new google.maps.Marker({
                 position,
                 map,
                 title: camera.camera_id,
                 icon: {
-                    path: google.maps.SymbolPath.CIRCLE,
-                    scale: 12,
-                    fillColor: camera.status === 'active' ? '#22c55e' : 
-                               camera.status === 'maintenance' ? '#eab308' : '#ef4444',
-                    fillOpacity: 0.9,
+                    path: cameraIconPath,
+                    scale: 1.5,
+                    fillColor: statusColor,
+                    fillOpacity: 1,
                     strokeColor: '#ffffff',
-                    strokeWeight: 3,
+                    strokeWeight: 2,
+                    anchor: new google.maps.Point(12, 12),
+                },
+                animation: google.maps.Animation.DROP,
+            });
+
+            // Create a separate label marker positioned below the camera icon
+            const labelMarker = new google.maps.Marker({
+                position: { lat: camera.latitude - 0.0008, lng: camera.longitude }, // Below the marker
+                map,
+                icon: {
+                    path: google.maps.SymbolPath.CIRCLE,
+                    scale: 0, // Invisible circle
+                    fillOpacity: 0,
+                    strokeOpacity: 0,
+                },
+                label: {
+                    text: camera.camera_id,
+                    color: '#0f172a',
+                    fontSize: '11px',
+                    fontWeight: '600',
+                },
+                zIndex: google.maps.Marker.MAX_ZINDEX + 1,
+            });
+
+            const infoWindow = new google.maps.InfoWindow({
+                content: `
+                    <div style="padding: 0; min-width: 240px; font-family: system-ui, sans-serif; border-radius: 8px; overflow: hidden;">
+                        <div style="background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%); padding: 16px; text-align: center;">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="white" style="display: inline-block; margin-bottom: 8px;">
+                                <path d="M9 2L7.17 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2h-3.17L15 2H9zm3 15c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5z"/>
+                            </svg>
+                            <h3 style="font-weight: 600; margin: 0; color: white; font-size: 16px;">${camera.camera_id}</h3>
+                        </div>
+                        <div style="padding: 16px; font-size: 13px; color: #555; line-height: 1.6;">
+                            <div style="margin: 8px 0; display: flex; align-items: center; gap: 8px;">
+                                <strong style="color: #333;">Status:</strong>
+                                <span style="background: ${camera.status === 'active' ? '#dcfce7' : camera.status === 'maintenance' ? '#fef3c7' : '#fee2e2'}; color: ${camera.status === 'active' ? '#16a34a' : camera.status === 'maintenance' ? '#ca8a04' : '#dc2626'}; padding: 2px 8px; border-radius: 4px; font-weight: 500; font-size: 11px;">
+                                    ${camera.status.toUpperCase()}
+                                </span>
+                            </div>
+                            ${camera.division_name ? `<div style="margin: 8px 0;"><strong style="color: #333;">Division:</strong> ${camera.division_name}</div>` : ''}
+                            ${camera.range_name ? `<div style="margin: 8px 0;"><strong style="color: #333;">Range:</strong> ${camera.range_name}</div>` : ''}
+                            ${camera.notes ? `<div style="margin: 8px 0;"><strong style="color: #333;">Notes:</strong> ${camera.notes}</div>` : ''}
+                            <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid #e5e7eb; font-size: 11px; color: #6b7280;">
+                                📍 ${camera.latitude.toFixed(6)}, ${camera.longitude.toFixed(6)}
+                            </div>
+                        </div>
+                    </div>
+                `,
+            });
+
+            // Open details on click (no hover flicker)
+            marker.addListener('click', () => {
+                if (activeInfoWindowRef.current) {
+                    activeInfoWindowRef.current.close();
+                }
+                infoWindow.open(map, marker);
+                activeInfoWindowRef.current = infoWindow;
+            });
+
+            newMarkers.push(marker);
+            newMarkers.push(labelMarker);
+        });
+
+        // Add markers for animals (different style)
+        animals.forEach(animal => {
+            const position = { lat: animal.latitude, lng: animal.longitude };
+            bounds.extend(position);
+
+            const marker = new google.maps.Marker({
+                position,
+                map,
+                title: `${animal.name} (${animal.species})`,
+                icon: {
+                    path: google.maps.SymbolPath.BACKWARD_CLOSED_ARROW,
+                    scale: 10,
+                    fillColor: '#0ea5e9',
+                    fillOpacity: 0.95,
+                    strokeColor: '#0f172a',
+                    strokeWeight: 2,
                 },
                 animation: google.maps.Animation.DROP,
             });
@@ -157,18 +256,13 @@ export default function MapComponent({
             const infoWindow = new google.maps.InfoWindow({
                 content: `
                     <div style="padding: 12px; min-width: 220px; font-family: system-ui, sans-serif;">
-                        <h3 style="font-weight: 600; margin: 0 0 8px 0; color: #111; font-size: 16px;">${camera.camera_id}</h3>
+                        <h3 style="font-weight: 600; margin: 0 0 8px 0; color: #111; font-size: 16px;">${animal.name}</h3>
                         <div style="font-size: 13px; color: #555; line-height: 1.5;">
-                            <div style="margin: 4px 0;"><strong>Status:</strong> 
-                                <span style="color: ${camera.status === 'active' ? '#22c55e' : camera.status === 'maintenance' ? '#eab308' : '#ef4444'}; font-weight: 500;">
-                                    ${camera.status.toUpperCase()}
-                                </span>
-                            </div>
-                            ${camera.division_name ? `<div style="margin: 4px 0;"><strong>Division:</strong> ${camera.division_name}</div>` : ''}
-                            ${camera.range_name ? `<div style="margin: 4px 0;"><strong>Range:</strong> ${camera.range_name}</div>` : ''}
-                            ${camera.notes ? `<div style="margin: 4px 0;"><strong>Notes:</strong> ${camera.notes}</div>` : ''}
+                            <div style="margin: 4px 0;"><strong>Species:</strong> ${animal.species}</div>
+                            ${animal.status ? `<div style="margin: 4px 0;"><strong>Status:</strong> ${animal.status}</div>` : ''}
+                            ${animal.last_seen ? `<div style="margin: 4px 0;"><strong>Last seen:</strong> ${animal.last_seen}</div>` : ''}
                             <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #eee; font-size: 11px; color: #888;">
-                                📍 ${camera.latitude.toFixed(6)}, ${camera.longitude.toFixed(6)}
+                                🧭 ${animal.latitude.toFixed(6)}, ${animal.longitude.toFixed(6)}
                             </div>
                         </div>
                     </div>
@@ -179,14 +273,14 @@ export default function MapComponent({
                 infoWindow.open(map, marker);
             });
 
-            return marker;
+            newMarkers.push(marker);
         });
 
-        setMarkers(newMarkers);
+        markersRef.current = newMarkers;
 
         // Fit map to show all markers with some delay to ensure markers are rendered
         setTimeout(() => {
-            if (cameras.length > 0) {
+            if (hasCameras || hasAnimals) {
                 try {
                     map.fitBounds(bounds);
                     const padding = { top: 60, right: 60, bottom: 60, left: 60 };
@@ -203,7 +297,7 @@ export default function MapComponent({
                 }
             }
         }, 100);
-    }, [map, cameras, mapFallback, markers]);
+    }, [map, cameras, animals, mapFallback]);
 
     // Static fallback map component
     const StaticMapFallback = () => (
@@ -290,33 +384,29 @@ export default function MapComponent({
         </div>
     );
 
-    if (loading) {
-        return (
-            <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-green-50 to-blue-50">
-                <div className="text-center">
-                    <div className="relative">
-                        <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-green-200 border-t-green-600 mb-4"></div>
-                        <div className="absolute inset-0 flex items-center justify-center">
-                            <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-1.447-.894L15 4m0 13V4m0 0L9 7" />
-                            </svg>
-                        </div>
-                    </div>
-                    <p className="text-gray-700 font-medium">Loading surveillance map...</p>
-                    <p className="text-gray-500 text-sm mt-1">Initializing camera locations</p>
-                </div>
-            </div>
-        );
-    }
-
-    if (error || mapFallback) {
-        return <StaticMapFallback />;
-    }
-
+    // Always prefer the interactive map; never switch to the older fallback UI
     return (
-        <div className="w-full h-full relative">
+        <div className="w-full h-full relative bg-gradient-to-br from-green-50 to-blue-50">
             <div ref={mapRef} className="w-full h-full" />
-            {cameras.length === 0 && (
+
+            {loading && (
+                <div className="absolute inset-0 flex items-center justify-center bg-white/60 backdrop-blur-sm">
+                    <div className="text-center">
+                        <div className="relative">
+                            <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-green-200 border-t-green-600 mb-4"></div>
+                            <div className="absolute inset-0 flex items-center justify-center">
+                                <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-1.447-.894L15 4m0 13V4m0 0L9 7" />
+                                </svg>
+                            </div>
+                        </div>
+                        <p className="text-gray-700 font-medium">Loading surveillance map...</p>
+                        <p className="text-gray-500 text-sm mt-1">Initializing camera locations</p>
+                    </div>
+                </div>
+            )}
+
+            {!loading && cameras.length === 0 && (
                 <div className="absolute inset-0 bg-black/20 flex items-center justify-center">
                     <div className="bg-white rounded-lg shadow-lg p-6 text-center max-w-sm mx-4">
                         <svg className="w-12 h-12 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
