@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react';
 import MapComponent from '../components/MapComponent';
 import { Button } from '@/components/ui/button';
-import { Plus, Edit2, Trash2, List, Map as MapIcon } from 'lucide-react';
+import { Plus, Edit2, Trash2, List, Map as MapIcon, TestTube, Settings } from 'lucide-react';
 import Modal from '@/components/ui/Modal';
 import CameraForm from '@/components/CameraForm';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import AlertDialog from '@/components/ui/AlertDialog';
+import MapDiagnostics from '../components/MapDiagnostics';
+import { defaultTestCameras, testGoogleMapsAPI } from '../utils/mapTest';
 
 export default function CamerasPage() {
     const [cameras, setCameras] = useState([]);
@@ -15,10 +17,26 @@ export default function CamerasPage() {
     const [editingCamera, setEditingCamera] = useState<any>(null);
     const [deleteConfirm, setDeleteConfirm] = useState<{ isOpen: boolean; cameraId: string | null }>({ isOpen: false, cameraId: null });
     const [alert, setAlert] = useState<{ isOpen: boolean; title: string; message: string; variant: 'error' | 'success' }>({ isOpen: false, title: '', message: '', variant: 'error' });
+    const [testMode, setTestMode] = useState(false);
+    const [showDiagnostics, setShowDiagnostics] = useState(false);
 
     useEffect(() => {
         fetchCameras();
+        // Test Google Maps API on load
+        testMapAPI();
     }, []);
+
+    const testMapAPI = async () => {
+        const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
+        const result = await testGoogleMapsAPI(apiKey);
+        
+        if (!result.success) {
+            console.warn('Google Maps API test failed:', result.error);
+            console.warn('Details:', result.details);
+        } else {
+            console.log('Google Maps API test successful');
+        }
+    };
 
     const fetchCameras = async () => {
         setLoading(true);
@@ -169,6 +187,34 @@ export default function CamerasPage() {
                             <List size={18} />
                         </button>
                     </div>
+                    <Button 
+                        onClick={() => setShowDiagnostics(true)}
+                        variant="outline" 
+                        className="border-gray-200 text-gray-700 hover:bg-gray-50"
+                    >
+                        <Settings className="mr-2 h-4 w-4" /> 
+                        Diagnostics
+                    </Button>
+                    {cameras.length === 0 && (
+                        <Button 
+                            onClick={() => {
+                                setTestMode(!testMode);
+                                if (!testMode) {
+                                    setAlert({ 
+                                        isOpen: true, 
+                                        title: 'Test Mode Enabled', 
+                                        message: 'Showing sample camera data for map testing', 
+                                        variant: 'success' 
+                                    });
+                                }
+                            }}
+                            variant="outline" 
+                            className="border-blue-200 text-blue-700 hover:bg-blue-50"
+                        >
+                            <TestTube className="mr-2 h-4 w-4" /> 
+                            {testMode ? 'Exit Test' : 'Test Map'}
+                        </Button>
+                    )}
                     <Button onClick={openCreateModal} className="bg-green-700 hover:bg-green-800">
                         <Plus className="mr-2 h-4 w-4" /> Add Camera
                     </Button>
@@ -178,8 +224,18 @@ export default function CamerasPage() {
             <div className="flex-1 bg-white rounded-lg border border-gray-200 overflow-hidden shadow-sm relative min-h-[500px]">
                 {viewMode === 'map' ? (
                     <div className="h-full w-full">
-                        <MapComponent cameras={cameras} />
-                        {/* Overlay List for quick access? Maybe later */}
+                        <MapComponent 
+                            cameras={testMode && cameras.length === 0 ? defaultTestCameras : cameras} 
+                        />
+                        {testMode && cameras.length === 0 && (
+                            <div className="absolute top-4 left-4 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 text-sm text-blue-800">
+                                <div className="flex items-center gap-2">
+                                    <TestTube size={16} />
+                                    <span className="font-medium">Test Mode Active</span>
+                                </div>
+                                <p className="text-xs mt-1">Showing sample camera locations</p>
+                            </div>
+                        )}
                     </div>
                 ) : (
                     <div className="overflow-x-auto">
@@ -263,6 +319,10 @@ export default function CamerasPage() {
                 message={alert.message}
                 variant={alert.variant}
             />
+
+            {showDiagnostics && (
+                <MapDiagnostics onClose={() => setShowDiagnostics(false)} />
+            )}
         </div>
     );
 }

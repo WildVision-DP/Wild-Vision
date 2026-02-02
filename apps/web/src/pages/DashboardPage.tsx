@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react';
-import { Camera, Users, MapPin } from 'lucide-react';
+import { Camera, MapPin } from 'lucide-react';
 import MapComponent from '../components/MapComponent';
 
 export default function DashboardPage() {
     const [cameraStats, setCameraStats] = useState({ active: 0, inactive: 0, maintenance: 0, total: 0 });
     const [geographyStats, setGeographyStats] = useState({ divisions: 0, ranges: 0, beats: 0 });
-    const [cameras, setCameras] = useState([]);
+    const [cameras, setCameras] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const user = JSON.parse(localStorage.getItem('user') || '{}');

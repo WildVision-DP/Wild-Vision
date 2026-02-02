@@ -90,44 +90,7 @@ export default function LoginPage() {
                         </div>
                     )}
 
-                    {/* Quick Login for Testing */}
-                    <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
-                        <p className="text-sm text-blue-700 mb-2">Quick Admin Login:</p>
-                        <Button 
-                            type="button"
-                            onClick={async () => {
-                                setEmail('admin@wildvision.gov.in');
-                                setPassword('admin123');
-                                setTimeout(async () => {
-                                    setError('');
-                                    setLoading(true);
-                                    try {
-                                        const response = await fetch('http://localhost:4000/auth/login', {
-                                            method: 'POST',
-                                            headers: { 'Content-Type': 'application/json' },
-                                            body: JSON.stringify({ email: 'admin@wildvision.gov.in', password: 'admin123' }),
-                                        });
-                                        if (!response.ok) {
-                                            throw new Error('Login failed');
-                                        }
-                                        const data = await response.json();
-                                        localStorage.setItem('accessToken', data.accessToken);
-                                        localStorage.setItem('refreshToken', data.refreshToken);
-                                        localStorage.setItem('user', JSON.stringify(data.user));
-                                        window.location.href = '/dashboard';
-                                    } catch (err) {
-                                        setError(err instanceof Error ? err.message : 'Login failed');
-                                    } finally {
-                                        setLoading(false);
-                                    }
-                                }, 100);
-                            }}
-                            className="w-full bg-blue-600 hover:bg-blue-700"
-                            disabled={loading}
-                        >
-                            🚀 Quick Login as Admin
-                        </Button>
-                    </div>                    <form onSubmit={handleSubmit} className="space-y-4">
+                    <form onSubmit={handleSubmit} className="space-y-4">
                         <div className="space-y-2">
                             <Label htmlFor="email">Email</Label>
                             <Input
