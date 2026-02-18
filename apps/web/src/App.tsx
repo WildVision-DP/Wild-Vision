@@ -6,6 +6,7 @@ import UsersPage from './pages/UsersPage';
 import UploadPage from './pages/UploadPage';
 import GeographyPage from './pages/GeographyPage';
 import WildlifeMapPage from './pages/WildlifeMapPage';
+import MapTestPage from './pages/MapTestPage';
 import ProtectedRoute from './components/ProtectedRoute';
 import Layout from './components/Layout';
 import ErrorBoundary from './components/ErrorBoundary';
@@ -16,6 +17,7 @@ function App() {
         <BrowserRouter>
             <Routes>
                 <Route path="/login" element={<LoginPage />} />
+                <Route path="/map-test" element={<MapTestPage />} />
 
                 {/* Protected Dashboard Layout */}
                 <Route element={<ProtectedRoute><Layout /></ProtectedRoute>}>
@@ -29,9 +31,10 @@ function App() {
                         </ErrorBoundary>
                     } />
                     <Route path="/map" element={<WildlifeMapPage />} />
-                    <Route path="/" element={<Navigate to="/dashboard" replace />} />
                 </Route>
 
+                {/* Default redirects */}
+                <Route path="/" element={<Navigate to="/login" replace />} />
                 <Route path="*" element={<Navigate to="/login" replace />} />
             </Routes>
         </BrowserRouter>

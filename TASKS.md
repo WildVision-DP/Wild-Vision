@@ -224,19 +224,19 @@
 
 ### 3.1 SD Card Upload Pipeline
 
-**Task 3.1.1** - Upload UI (Ground Staff) | **P0** | **Status:** [ ] Not Started
+**Task 3.1.1** - Upload UI (Ground Staff) | **P0** | **Status:** [x] Complete
 
-- [ ] **Task 3.1.1.1**: Create upload page component (React)
-- [ ] **Task 3.1.1.2**: Implement bulk folder upload (drag & drop)
-- [ ] **Task 3.1.1.3**: Add file type validation (jpg, png, raw formats)
-- [ ] **Task 3.1.1.4**: Add file size validation (max 50MB per image)
-- [ ] **Task 3.1.1.5**: Display upload progress for each file
-- [ ] **Task 3.1.1.6**: Implement offline-first capability (queue uploads)
-- [ ] **Task 3.1.1.7**: Store pending uploads in IndexedDB
-- [ ] **Task 3.1.1.8**: Auto-resume uploads on reconnection
-- [ ] **Task 3.1.1.9**: Add camera selection dropdown
-- [ ] **Task 3.1.1.10**: Show upload statistics (total, success, failed)
-- [ ] **Task 3.1.1.11**: Add retry mechanism for failed uploads
+- [x] **Task 3.1.1.1**: Create upload page component (React)
+- [x] **Task 3.1.1.2**: Implement bulk folder upload (drag & drop)
+- [x] **Task 3.1.1.3**: Add file type validation (jpg, png, raw formats)
+- [x] **Task 3.1.1.4**: Add file size validation (max 50MB per image)
+- [x] **Task 3.1.1.5**: Display upload progress for each file
+- [x] **Task 3.1.1.6**: Implement offline-first capability (queue uploads)
+- [x] **Task 3.1.1.7**: Store pending uploads in IndexedDB
+- [x] **Task 3.1.1.8**: Auto-resume uploads on reconnection
+- [x] **Task 3.1.1.9**: Add camera selection dropdown
+- [x] **Task 3.1.1.10**: Show upload statistics (total, success, failed)
+- [x] **Task 3.1.1.11**: Add retry mechanism for failed uploads
 
 ---
 

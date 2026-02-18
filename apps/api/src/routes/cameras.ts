@@ -134,10 +134,14 @@ cameras.post('/', requireAuth, requireRoleLevel(2), async (c) => {
       return c.json({ error: 'Camera ID already exists' }, 409);
     }
 
-    // Cast empty strings to null for UUID fields
+    // Cast empty strings and undefined to null
     const divId = division_id || null;
     const rngId = range_id || null;
     const btId = beat_id || null;
+    const camModel = camera_model || null;
+    const serialNum = serial_number || null;
+    const installDt = install_date || null;
+    const notesTxt = notes || null;
 
     const [camera] = await sql`
       INSERT INTO cameras (
@@ -146,8 +150,8 @@ cameras.post('/', requireAuth, requireRoleLevel(2), async (c) => {
         install_date, status, notes, created_by
       ) VALUES (
         ${camera_id}, ${divId}, ${rngId}, ${btId},
-        ${latitude}, ${longitude}, ${camera_model}, ${serial_number},
-        ${install_date}, ${status}, ${notes}, ${user.userId}
+        ${latitude}, ${longitude}, ${camModel}, ${serialNum},
+        ${installDt}, ${status}, ${notesTxt}, ${user.userId}
       )
       RETURNING *
     `;

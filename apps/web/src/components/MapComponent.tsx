@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { Loader } from '@googlemaps/js-api-loader';
 
 interface MapComponentProps {
     cameras?: Array<{
@@ -59,14 +58,6 @@ export default function MapComponent({
         try {
             mapInitializedRef.current = true;
 
-            const loader = new Loader({
-                apiKey,
-                version: 'weekly',
-                libraries: ['maps'],
-                region: 'IN',
-                language: 'en'
-            });
-
             console.log('Loading Google Maps API...');
 
             // Safety timeout so we never get stuck on the loading screen
@@ -76,7 +67,17 @@ export default function MapComponent({
                 setLoading(false);
             }, 10000); // 10 seconds hard cap
 
-            await loader.importLibrary('maps');
+            // Load Google Maps script directly
+            const script = document.createElement('script');
+            script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=marker&region=IN&language=en&v=weekly`;
+            script.async = true;
+            script.defer = true;
+
+            await new Promise<void>((resolve, reject) => {
+                script.onload = () => resolve();
+                script.onerror = () => reject(new Error('Failed to load Google Maps script'));
+                document.head.appendChild(script);
+            });
 
             console.log('Google Maps API loaded successfully');
 
@@ -146,7 +147,7 @@ export default function MapComponent({
         const newMarkers: google.maps.Marker[] = [];
 
         // Add new markers for cameras
-        cameras.forEach((camera, index) => {
+        cameras.forEach((camera) => {
             const position = { lat: camera.latitude, lng: camera.longitude };
             bounds.extend(position);
 
@@ -306,89 +307,6 @@ export default function MapComponent({
         }, 100);
     }, [map, cameras, animals, mapFallback]);
 
-    // Static fallback map component
-    const StaticMapFallback = () => (
-        <div className="w-full h-full bg-gradient-to-br from-green-50 to-blue-50 relative overflow-hidden">
-            {/* Background pattern */}
-            <div className="absolute inset-0 opacity-20">
-                <div className="grid grid-cols-8 gap-4 h-full p-4">
-                    {Array.from({ length: 64 }).map((_, i) => (
-                        <div key={i} className="bg-green-200 rounded-sm opacity-30"></div>
-                    ))}
-                </div>
-            </div>
-
-            <div className="absolute inset-0 flex flex-col">
-                <div className="bg-white/90 backdrop-blur-sm border-b border-green-200 p-4">
-                    <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 bg-green-600 rounded-lg flex items-center justify-center">
-                            <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                            </svg>
-                        </div>
-                        <div>
-                            <h3 className="font-semibold text-gray-900">Camera Locations</h3>
-                            <p className="text-sm text-gray-600">Interactive map temporarily unavailable</p>
-                        </div>
-                    </div>
-                </div>
-
-                <div className="flex-1 p-4 overflow-auto">
-                    {cameras.length === 0 ? (
-                        <div className="flex items-center justify-center h-full">
-                            <div className="text-center text-gray-500">
-                                <div className="w-16 h-16 mx-auto mb-4 bg-gray-200 rounded-full flex items-center justify-center">
-                                    <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                                    </svg>
-                                </div>
-                                <p>No cameras deployed</p>
-                            </div>
-                        </div>
-                    ) : (
-                        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                            {cameras.map((camera) => (
-                                <div key={camera.id} className="bg-white/80 backdrop-blur-sm rounded-lg border border-white/50 p-4 hover:bg-white/90 transition-all">
-                                    <div className="flex items-start gap-3">
-                                        <div className={`w-3 h-3 rounded-full mt-2 ${camera.status === 'active' ? 'bg-green-500' :
-                                            camera.status === 'maintenance' ? 'bg-yellow-500' : 'bg-red-500'
-                                            }`} />
-                                        <div className="flex-1 min-w-0">
-                                            <h4 className="font-semibold text-gray-900 truncate">{camera.camera_id}</h4>
-                                            <p className={`text-xs font-medium mt-1 ${camera.status === 'active' ? 'text-green-600' :
-                                                camera.status === 'maintenance' ? 'text-yellow-600' : 'text-red-600'
-                                                }`}>
-                                                {camera.status.toUpperCase()}
-                                            </p>
-                                            {(camera.division_name || camera.range_name) && (
-                                                <p className="text-xs text-gray-600 mt-1 truncate">
-                                                    {[camera.division_name, camera.range_name].filter(Boolean).join(' → ')}
-                                                </p>
-                                            )}
-                                            <p className="text-xs text-gray-500 mt-2 font-mono">
-                                                📍 {camera.latitude.toFixed(4)}, {camera.longitude.toFixed(4)}
-                                            </p>
-                                        </div>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    )}
-                </div>
-
-                <div className="bg-yellow-50/90 backdrop-blur-sm border-t border-yellow-200 p-3">
-                    <div className="flex items-center gap-2 text-sm text-yellow-800">
-                        <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.502 0L4.312 16.5c-.77.833.192 2.5 1.732 2.5z" />
-                        </svg>
-                        <span>Map service temporarily unavailable. Showing camera list instead.</span>
-                    </div>
-                </div>
-            </div>
-        </div>
-    );
-
     // Always prefer the interactive map; never switch to the older fallback UI
     return (
         <div className="w-full h-full relative bg-gradient-to-br from-green-50 to-blue-50">
@@ -419,6 +337,17 @@ export default function MapComponent({
                         </svg>
                         <h3 className="text-lg font-semibold text-gray-900 mb-2">No Cameras Deployed</h3>
                         <p className="text-gray-600 text-sm">Add camera units to see them on the map</p>
+                    </div>
+                </div>
+            )}
+
+            {error && (
+                <div className="absolute top-4 left-1/2 transform -translate-x-1/2 bg-red-50 border border-red-200 rounded-lg p-3 shadow-lg max-w-md">
+                    <div className="flex items-center gap-2 text-sm text-red-800">
+                        <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.502 0L4.312 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                        </svg>
+                        <span>{error}</span>
                     </div>
                 </div>
             )}

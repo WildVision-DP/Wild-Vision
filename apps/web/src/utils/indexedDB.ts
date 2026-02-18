@@ -8,6 +8,7 @@ interface UploadFile {
     progress: number;
     error?: string;
     timestamp: number;
+    retryCount?: number; // Added for retry mechanism (3.1.1.11)
 }
 
 interface WildVisionDB extends DBSchema {
@@ -19,13 +20,16 @@ interface WildVisionDB extends DBSchema {
 }
 
 const DB_NAME = 'wildvision-db';
-const DB_VERSION = 1;
+const DB_VERSION = 2; // Incremented version to support schema changes
 
 export async function initDB() {
     return openDB<WildVisionDB>(DB_NAME, DB_VERSION, {
-        upgrade(db) {
-            const store = db.createObjectStore('uploads', { keyPath: 'id' });
-            store.createIndex('by-status', 'status');
+        upgrade(db, oldVersion, newVersion, transaction) {
+            // Create or update the store
+            if (!db.objectStoreNames.contains('uploads')) {
+                const store = db.createObjectStore('uploads', { keyPath: 'id' });
+                store.createIndex('by-status', 'status');
+            }
         },
     });
 }

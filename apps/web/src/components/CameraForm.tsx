@@ -46,18 +46,18 @@ export default function CameraForm({ initialData, onSubmit, onCancel }: CameraFo
             if (selectedRange) {
                 cameraIdPreview += `-${selectedRange.code}`;
                 if (selectedBeat) {
-                    cameraIdPreview += `-${selectedBeat.code}-CAM##`;
+                    cameraIdPreview += `-${selectedBeat.code}-###`;
                 } else {
-                    cameraIdPreview += '-[BEAT]-CAM##';
+                    cameraIdPreview += '-[BEAT]-###';
                 }
             } else {
-                cameraIdPreview += '-[RANGE]-[BEAT]-CAM##';
+                cameraIdPreview += '-[RANGE]-[BEAT]-###';
             }
         } else {
-            cameraIdPreview += '-[DIVISION]-[RANGE]-[BEAT]-CAM##';
+            cameraIdPreview += '-[DIVISION]-[RANGE]-[BEAT]-###';
         }
     } else {
-        cameraIdPreview = '[BRAND]-[DIVISION]-[RANGE]-[BEAT]-CAM##';
+        cameraIdPreview = '[BRAND]-[DIVISION]-[RANGE]-[BEAT]-###';
     }
 
     useEffect(() => {
@@ -215,8 +215,46 @@ export default function CameraForm({ initialData, onSubmit, onCancel }: CameraFo
                 return;
             }
 
+            // Generate camera_id from brand and geography codes
+            let generatedCameraId = '';
+            if (selectedBrand && selectedDivision && selectedRange && selectedBeat) {
+                // Get the count of existing cameras in this beat to generate unique number
+                const beatCode = selectedBeat.code;
+                const divisionCode = selectedDivision.code;
+                const rangeCode = selectedRange.code;
+                const brandCode = selectedBrand.code;
+                
+                // Generate: BRAND-DIV-RNG-BT-XXX (e.g., BRW-BTR-RNG-N01-BT01-001)
+                const token = localStorage.getItem('accessToken');
+                const response = await fetch(`/api/cameras?beat_id=${formData.beat_id}`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                
+                let cameraNumber = '001';
+                if (response.ok) {
+                    const data = await response.json();
+                    const camerasInBeat = data.cameras || [];
+                    cameraNumber = String(camerasInBeat.length + 1).padStart(3, '0');
+                }
+                
+                generatedCameraId = `${brandCode}-${divisionCode}-${rangeCode}-${beatCode}-${cameraNumber}`;
+            } else {
+                alert('Please select all geography hierarchy levels (Circle → Division → Range → Beat)');
+                setLoading(false);
+                return;
+            }
+
             await onSubmit({
-                ...formData,
+                camera_id: generatedCameraId,
+                division_id: formData.division_id,
+                range_id: formData.range_id,
+                beat_id: formData.beat_id,
+                camera_name: formData.camera_name, // Display name
+                camera_model: null, // Hardware model (not collected in this form)
+                serial_number: null, // Not collected in this form
+                install_date: new Date().toISOString().split('T')[0], // Today's date
+                status: formData.status,
+                notes: formData.notes || null,
                 latitude: parseFloat(String(formData.latitude)),
                 longitude: parseFloat(String(formData.longitude))
             });

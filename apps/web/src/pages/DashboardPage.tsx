@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Camera, MapPin } from 'lucide-react';
 import MapComponent from '../components/MapComponent';
+import CameraGallery from '@/components/CameraGallery';
 
 export default function DashboardPage() {
     const [cameraStats, setCameraStats] = useState({ active: 0, inactive: 0, maintenance: 0, total: 0 });
@@ -8,10 +9,18 @@ export default function DashboardPage() {
     const [cameras, setCameras] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [viewGalleryId, setViewGalleryId] = useState<string | null>(null);
     const user = JSON.parse(localStorage.getItem('user') || '{}');
 
     useEffect(() => {
         fetchDashboardData();
+        
+        // Listen for map popup events
+        const handleOpenGallery = (e: any) => {
+            if (e.detail) setViewGalleryId(e.detail);
+        };
+        window.addEventListener('open-camera-gallery', handleOpenGallery);
+        return () => window.removeEventListener('open-camera-gallery', handleOpenGallery);
     }, []);
 
     const fetchDashboardData = async () => {
@@ -265,6 +274,14 @@ export default function DashboardPage() {
                     <MapComponent cameras={cameras} />
                 </div>
             </div>
+
+            {/* Camera Gallery Modal */}
+            <CameraGallery
+                cameraId={viewGalleryId || ''}
+                cameraName={cameras.find(c => c.id === viewGalleryId)?.camera_name || 'Camera'}
+                isOpen={!!viewGalleryId}
+                onClose={() => setViewGalleryId(null)}
+            />
         </div>
     );
 }

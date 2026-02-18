@@ -57,6 +57,10 @@ app.route('/upload', uploadRoutes);
 import imageRoutes from './routes/images';
 app.route('/images', imageRoutes);
 
+// Proxy routes (serve images from MinIO)
+import proxyRoutes from './routes/proxy';
+app.route('/proxy', proxyRoutes);
+
 const port = process.env.API_PORT || 4000;
 
 console.log(`🐅 WildVision API running on http://localhost:${port}`);
