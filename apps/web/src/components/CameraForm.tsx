@@ -37,7 +37,7 @@ export default function CameraForm({ initialData, onSubmit, onCancel }: CameraFo
     const selectedDivision = divisions.find(d => d.id === formData.division_id);
     const selectedRange = ranges.find(r => r.id === formData.range_id);
     const selectedBeat = beats.find(b => b.id === formData.beat_id);
-    
+
     let cameraIdPreview = '';
     if (selectedBrand) {
         cameraIdPreview = selectedBrand.code;
@@ -67,7 +67,6 @@ export default function CameraForm({ initialData, onSubmit, onCancel }: CameraFo
 
     useEffect(() => {
         if (initialData) {
-            console.log('CameraForm: Received initialData:', initialData);
             setFormData({
                 camera_id: initialData.camera_id || '',
                 brand_id: initialData.brand_id || '',
@@ -81,23 +80,11 @@ export default function CameraForm({ initialData, onSubmit, onCancel }: CameraFo
                 notes: initialData.notes || '',
                 status: initialData.status || 'active',
             });
-            console.log('CameraForm: Set form data for editing');
-            // Trigger cascades if IDs exist - this will load the dropdowns with current selections
-            if (initialData.circle_id) {
-                console.log('CameraForm: Fetching divisions for circle:', initialData.circle_id);
-                fetchDivisions(initialData.circle_id);
-            }
-            if (initialData.division_id) {
-                console.log('CameraForm: Fetching ranges for division:', initialData.division_id);
-                fetchRanges(initialData.division_id);
-            }
-            if (initialData.range_id) {
-                console.log('CameraForm: Fetching beats for range:', initialData.range_id);
-                fetchBeats(initialData.range_id);
-            }
+            // Trigger cascades if IDs exist
+            if (initialData.circle_id) fetchDivisions(initialData.circle_id);
+            if (initialData.division_id) fetchRanges(initialData.division_id);
+            if (initialData.range_id) fetchBeats(initialData.range_id);
         } else {
-            console.log('CameraForm: No initialData provided (create mode)');
-            // Reset form for create mode
             setFormData({
                 camera_id: '',
                 brand_id: '',
@@ -119,7 +106,7 @@ export default function CameraForm({ initialData, onSubmit, onCancel }: CameraFo
     const fetchBrands = async () => {
         try {
             const token = localStorage.getItem('accessToken');
-            const res = await fetch('http://localhost:4000/brands', {
+            const res = await fetch('/api/brands', {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             if (res.ok) {
@@ -134,7 +121,7 @@ export default function CameraForm({ initialData, onSubmit, onCancel }: CameraFo
     const fetchCircles = async () => {
         try {
             const token = localStorage.getItem('accessToken');
-            const res = await fetch('http://localhost:4000/geography/circles', {
+            const res = await fetch('/api/geography/circles', {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             if (res.ok) {
@@ -149,20 +136,15 @@ export default function CameraForm({ initialData, onSubmit, onCancel }: CameraFo
     const fetchDivisions = async (circleId?: string) => {
         try {
             const token = localStorage.getItem('accessToken');
-            console.log('Fetching divisions with token:', !!token);
-            const url = circleId 
-                ? `http://localhost:4000/geography/divisions?circle_id=${circleId}`
-                : 'http://localhost:4000/geography/divisions';
+            const url = circleId
+                ? `/api/geography/divisions?circle_id=${circleId}`
+                : '/api/geography/divisions';
             const res = await fetch(url, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
-            console.log('Divisions response status:', res.status);
             if (res.ok) {
                 const data = await res.json();
-                console.log('Divisions data:', data);
                 setDivisions(data.divisions || []);
-            } else {
-                console.error('Divisions fetch failed:', res.status, await res.text());
             }
         } catch (err) {
             console.error('Divisions fetch error:', err);
@@ -172,17 +154,13 @@ export default function CameraForm({ initialData, onSubmit, onCancel }: CameraFo
     const fetchRanges = async (divisionId: string) => {
         try {
             const token = localStorage.getItem('accessToken');
-            console.log('Fetching ranges for division:', divisionId);
-            const res = await fetch(`http://localhost:4000/geography/ranges?division_id=${divisionId}`, {
+            const res = await fetch(`/api/geography/ranges?division_id=${divisionId}`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
-            console.log('Ranges response status:', res.status);
             if (res.ok) {
                 const data = await res.json();
-                console.log('Ranges data:', data);
                 setRanges(data.ranges || []);
             } else {
-                console.error('Ranges fetch failed:', res.status, await res.text());
                 setRanges([]);
             }
         } catch (err) {
@@ -194,7 +172,7 @@ export default function CameraForm({ initialData, onSubmit, onCancel }: CameraFo
     const fetchBeats = async (rangeId: string) => {
         try {
             const token = localStorage.getItem('accessToken');
-            const res = await fetch(`http://localhost:4000/geography/beats?range_id=${rangeId}`, {
+            const res = await fetch(`/api/geography/beats?range_id=${rangeId}`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             if (res.ok) {

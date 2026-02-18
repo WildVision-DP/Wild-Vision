@@ -137,7 +137,6 @@ export default function MapComponent({
         const hasAnimals = animals.length > 0;
 
         if (!hasCameras && !hasAnimals) {
-            setMarkers([]);
             return;
         }
 
@@ -155,8 +154,8 @@ export default function MapComponent({
             const cameraIconPath = 'M9 2L7.17 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2h-3.17L15 2H9zm3 15c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5z';
 
             // Status-based colors
-            const statusColor = camera.status === 'active' ? '#22c55e' : 
-                               camera.status === 'maintenance' ? '#eab308' : '#ef4444';
+            const statusColor = camera.status === 'active' ? '#22c55e' :
+                camera.status === 'maintenance' ? '#eab308' : '#ef4444';
 
             const marker = new google.maps.Marker({
                 position,
@@ -214,6 +213,14 @@ export default function MapComponent({
                             ${camera.notes ? `<div style="margin: 8px 0;"><strong style="color: #333;">Notes:</strong> ${camera.notes}</div>` : ''}
                             <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid #e5e7eb; font-size: 11px; color: #6b7280;">
                                 📍 ${camera.latitude.toFixed(6)}, ${camera.longitude.toFixed(6)}
+                            </div>
+                            <div style="margin-top: 8px; text-align: center;">
+                                <button 
+                                    onclick="window.dispatchEvent(new CustomEvent('open-camera-gallery', { detail: '${camera.id || camera.camera_id}' }))"
+                                    style="background: #fdf4ff; border: 1px solid #e879f9; color: #a21caf; border-radius: 4px; padding: 4px 12px; font-size: 11px; cursor: pointer; font-weight: 500;"
+                                >
+                                    View Gallery
+                                </button>
                             </div>
                         </div>
                     </div>
@@ -285,7 +292,7 @@ export default function MapComponent({
                     map.fitBounds(bounds);
                     const padding = { top: 60, right: 60, bottom: 60, left: 60 };
                     map.fitBounds(bounds, padding);
-                    
+
                     // Ensure minimum zoom level
                     const maxZoom = 15;
                     const listener = google.maps.event.addListener(map, 'bounds_changed', () => {
@@ -310,7 +317,7 @@ export default function MapComponent({
                     ))}
                 </div>
             </div>
-            
+
             <div className="absolute inset-0 flex flex-col">
                 <div className="bg-white/90 backdrop-blur-sm border-b border-green-200 p-4">
                     <div className="flex items-center gap-3">
@@ -326,7 +333,7 @@ export default function MapComponent({
                         </div>
                     </div>
                 </div>
-                
+
                 <div className="flex-1 p-4 overflow-auto">
                     {cameras.length === 0 ? (
                         <div className="flex items-center justify-center h-full">
@@ -344,16 +351,14 @@ export default function MapComponent({
                             {cameras.map((camera) => (
                                 <div key={camera.id} className="bg-white/80 backdrop-blur-sm rounded-lg border border-white/50 p-4 hover:bg-white/90 transition-all">
                                     <div className="flex items-start gap-3">
-                                        <div className={`w-3 h-3 rounded-full mt-2 ${
-                                            camera.status === 'active' ? 'bg-green-500' :
+                                        <div className={`w-3 h-3 rounded-full mt-2 ${camera.status === 'active' ? 'bg-green-500' :
                                             camera.status === 'maintenance' ? 'bg-yellow-500' : 'bg-red-500'
-                                        }`} />
+                                            }`} />
                                         <div className="flex-1 min-w-0">
                                             <h4 className="font-semibold text-gray-900 truncate">{camera.camera_id}</h4>
-                                            <p className={`text-xs font-medium mt-1 ${
-                                                camera.status === 'active' ? 'text-green-600' :
+                                            <p className={`text-xs font-medium mt-1 ${camera.status === 'active' ? 'text-green-600' :
                                                 camera.status === 'maintenance' ? 'text-yellow-600' : 'text-red-600'
-                                            }`}>
+                                                }`}>
                                                 {camera.status.toUpperCase()}
                                             </p>
                                             {(camera.division_name || camera.range_name) && (
@@ -371,7 +376,7 @@ export default function MapComponent({
                         </div>
                     )}
                 </div>
-                
+
                 <div className="bg-yellow-50/90 backdrop-blur-sm border-t border-yellow-200 p-3">
                     <div className="flex items-center gap-2 text-sm text-yellow-800">
                         <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">

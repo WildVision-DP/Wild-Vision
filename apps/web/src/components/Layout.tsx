@@ -1,6 +1,6 @@
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
-import { LogOut, Map, LayoutDashboard, User, MapPin, Shield } from 'lucide-react';
+import { LogOut, Map, LayoutDashboard, User, MapPin, Shield, Upload } from 'lucide-react';
 
 export default function Layout() {
     const navigate = useNavigate();
@@ -139,6 +139,18 @@ export default function Layout() {
                             <User size={20} />
                             <span>Users</span>
                         </NavLink>
+                        <NavLink
+                            to="/upload"
+                            className={({ isActive }) =>
+                                `flex items-center space-x-2 px-4 py-2 rounded-lg transition-colors ${isActive
+                                    ? 'bg-primary text-primary-foreground'
+                                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                                }`
+                            }
+                        >
+                            <Upload className="h-5 w-5" />
+                            <span>Upload Data</span>
+                        </NavLink>
                     </nav>
 
                     <div className="mt-8 p-4 bg-amber-50 rounded-lg border border-amber-200">
@@ -152,7 +164,7 @@ export default function Layout() {
                 </aside>
 
                 {/* Page Content */}
-                <main className="flex-1 bg-white rounded-xl shadow-sm border border-gray-200 min-h-[600px]">
+                <main className="flex-1 bg-white rounded-xl shadow-sm border border-gray-200 min-h-[600px] p-6">
                     <Outlet />
                 </main>
             </div>

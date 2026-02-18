@@ -18,7 +18,7 @@ export default function DashboardPage() {
         try {
             const token = localStorage.getItem('accessToken');
             console.log('Dashboard: Token exists:', !!token);
-            
+
             if (!token) {
                 console.error('Dashboard: No auth token found, redirecting to login');
                 window.location.href = '/';
@@ -29,10 +29,10 @@ export default function DashboardPage() {
             console.log('Dashboard: Making API calls...');
 
             const [camerasRes, divisionsRes, rangesRes, beatsRes] = await Promise.all([
-                fetch('http://localhost:4000/cameras', { headers }),
-                fetch('http://localhost:4000/geography/divisions', { headers }),
-                fetch('http://localhost:4000/geography/ranges', { headers }),
-                fetch('http://localhost:4000/geography/beats', { headers })
+                fetch('/api/cameras', { headers }),
+                fetch('/api/geography/divisions', { headers }),
+                fetch('/api/geography/ranges', { headers }),
+                fetch('/api/geography/beats', { headers })
             ]);
 
             console.log('Dashboard: API responses:', {
@@ -59,9 +59,9 @@ export default function DashboardPage() {
                 setCameras(cameras);
                 setCameraStats({
                     total: cameras.length,
-                    active: cameras.filter(c => c.status === 'active').length,
-                    inactive: cameras.filter(c => c.status === 'inactive').length,
-                    maintenance: cameras.filter(c => c.status === 'maintenance').length
+                    active: cameras.filter((c: any) => c.status === 'active').length,
+                    inactive: cameras.filter((c: any) => c.status === 'inactive').length,
+                    maintenance: cameras.filter((c: any) => c.status === 'maintenance').length
                 });
             } else {
                 console.error('Dashboard: Failed to fetch cameras:', await camerasRes.text());
@@ -88,7 +88,7 @@ export default function DashboardPage() {
             }
         } catch (error) {
             console.error('Dashboard: Failed to fetch data:', error);
-            
+
             // If it's a network error, might be API server down
             if (error instanceof TypeError && error.message.includes('fetch')) {
                 console.error('Dashboard: API server appears to be down');
@@ -118,7 +118,7 @@ export default function DashboardPage() {
                 <div className="bg-red-50 border border-red-200 rounded-lg p-4">
                     <h3 className="text-red-900 font-semibold">Error Loading Dashboard</h3>
                     <p className="text-red-700 mt-1">{error}</p>
-                    <button 
+                    <button
                         onClick={() => {
                             setError(null);
                             setLoading(true);
@@ -139,8 +139,6 @@ export default function DashboardPage() {
                 <h2 className="text-2xl font-bold text-gray-900">Overview</h2>
                 <p className="text-gray-500">Welcome back, {user.fullName}</p>
             </div>
-
-
 
             {/* Camera Statistics - Single Block with White Background */}
             <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-shadow duration-300 mb-6">

@@ -27,7 +27,7 @@ export default function UsersPage() {
         setLoading(true);
         try {
             const token = localStorage.getItem('accessToken');
-            const response = await fetch('http://localhost:4000/users', {
+            const response = await fetch('/api/users', {
                 headers: {
                     'Authorization': `Bearer ${token}`,
                 },
@@ -47,7 +47,7 @@ export default function UsersPage() {
     const fetchRoles = async () => {
         try {
             const token = localStorage.getItem('accessToken');
-            const response = await fetch('http://localhost:4000/users/roles', {
+            const response = await fetch('/api/users/roles', {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             if (response.ok) {
@@ -62,7 +62,7 @@ export default function UsersPage() {
     const handleCreate = async (data: any) => {
         try {
             const token = localStorage.getItem('accessToken');
-            const response = await fetch('http://localhost:4000/users', {
+            const response = await fetch('/api/users', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -88,7 +88,7 @@ export default function UsersPage() {
         if (!editingUser) return;
         try {
             const token = localStorage.getItem('accessToken');
-            const response = await fetch(`http://localhost:4000/users/${editingUser.id}`, {
+            const response = await fetch(`/api/users/${editingUser.id}`, {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',
@@ -119,7 +119,7 @@ export default function UsersPage() {
         if (!deleteConfirm.userId) return;
         try {
             const token = localStorage.getItem('accessToken');
-            const response = await fetch(`http://localhost:4000/users/${deleteConfirm.userId}`, {
+            const response = await fetch(`/api/users/${deleteConfirm.userId}`, {
                 method: 'DELETE',
                 headers: {
                     'Authorization': `Bearer ${token}`,

@@ -15,14 +15,11 @@ cameras.get('/', requireAuth, async (c) => {
     // Build query based on user role
     let query = sql`
       SELECT 
-        c.id, c.camera_id, c.camera_name, c.brand_id, c.division_id, c.range_id, c.beat_id,
-        c.latitude::float, c.longitude::float, c.camera_model, 
+        c.id, c.camera_id, c.latitude::float, c.longitude::float, c.camera_model, 
         c.serial_number, c.install_date, c.status, c.notes,
-        cb.name as brand_name, cb.code as brand_code,
         d.name as division_name, r.name as range_name, b.name as beat_name,
         c.created_at, c.updated_at
       FROM cameras c
-      LEFT JOIN camera_brands cb ON c.brand_id = cb.id
       LEFT JOIN divisions d ON c.division_id = d.id
       LEFT JOIN ranges r ON c.range_id = r.id
       LEFT JOIN beats b ON c.beat_id = b.id
@@ -36,8 +33,8 @@ cameras.get('/', requireAuth, async (c) => {
     if (range_id) filters.push(sql`c.range_id = ${range_id}`);
     if (beat_id) filters.push(sql`c.beat_id = ${beat_id}`);
 
-    // Apply hierarchy restrictions for non-admin users (but only for Role Officers, not Ground Staff)
-    if (user.roleName !== 'Admin' && user.roleName !== 'Ground Staff') {
+    // Apply hierarchy restrictions for non-admin users
+    if (user.roleName !== 'Admin') {
       const [assignment] = await sql`
         SELECT division_id, range_id, beat_id 
         FROM user_assignments 
@@ -50,28 +47,9 @@ cameras.get('/', requireAuth, async (c) => {
       }
     }
 
-    // Build WHERE clause
-    let whereClause = sql`WHERE c.deleted_at IS NULL`;
-    if (filters.length > 0) {
-      for (const filter of filters) {
-        whereClause = sql`${whereClause} AND ${filter}`;
-      }
-    }
-
     const result = await sql`
-      SELECT 
-        c.id, c.camera_id, c.camera_name, c.brand_id, 
-        cb.name as brand_name, cb.code as brand_code,
-        c.latitude::float, c.longitude::float, c.camera_model, 
-        c.serial_number, c.install_date, c.status, c.notes,
-        d.name as division_name, r.name as range_name, b.name as beat_name,
-        c.created_at, c.updated_at
-      FROM cameras c
-      LEFT JOIN camera_brands cb ON c.brand_id = cb.id
-      LEFT JOIN divisions d ON c.division_id = d.id
-      LEFT JOIN ranges r ON c.range_id = r.id
-      LEFT JOIN beats b ON c.beat_id = b.id
-      ${whereClause}
+      ${query}
+      ${filters.length > 0 ? filters.reduce((acc, curr) => sql`${acc} AND ${curr}`, sql`AND (TRUE)`) : sql``}
       ORDER BY c.created_at DESC
       LIMIT ${parseInt(limit)} OFFSET ${offset}
     `;
@@ -91,7 +69,7 @@ cameras.get('/', requireAuth, async (c) => {
     });
   } catch (error) {
     console.error('List cameras error:', error);
-    return c.json({ error: 'Failed to fetch cameras' }, 500);
+    return c.json({ error: 'Failed to fetch cameras', details: (error as any).message }, 500);
   }
 });
 
@@ -104,13 +82,11 @@ cameras.get('/:id', requireAuth, async (c) => {
       SELECT 
         c.*, 
         c.latitude::float, c.longitude::float,
-        cb.name as brand_name, cb.code as brand_code,
         d.name as division_name, 
         r.name as range_name, 
         b.name as beat_name,
         u.full_name as created_by_name
       FROM cameras c
-      LEFT JOIN camera_brands cb ON c.brand_id = cb.id
       LEFT JOIN divisions d ON c.division_id = d.id
       LEFT JOIN ranges r ON c.range_id = r.id
       LEFT JOIN beats b ON c.beat_id = b.id
@@ -134,8 +110,7 @@ cameras.post('/', requireAuth, requireRoleLevel(2), async (c) => {
   try {
     const user = c.get('user');
     const {
-      brand_id,
-      camera_name,
+      camera_id,
       division_id,
       range_id,
       beat_id,
@@ -149,36 +124,30 @@ cameras.post('/', requireAuth, requireRoleLevel(2), async (c) => {
     } = await c.req.json();
 
     // Validate required fields
-    if (!brand_id || !camera_name || !beat_id || !latitude || !longitude) {
-      return c.json({ error: 'brand_id, camera_name, beat_id, latitude, and longitude are required' }, 400);
+    if (!camera_id || !latitude || !longitude) {
+      return c.json({ error: 'camera_id, latitude, and longitude are required' }, 400);
     }
 
-    // Get brand code for camera ID generation
-    const [brand] = await sql`SELECT code FROM camera_brands WHERE id = ${brand_id}`;
-    if (!brand) {
-      return c.json({ error: 'Brand not found' }, 404);
+    // Check if camera_id already exists
+    const [existing] = await sql`SELECT id FROM cameras WHERE camera_id = ${camera_id}`;
+    if (existing) {
+      return c.json({ error: 'Camera ID already exists' }, 409);
     }
 
-    // Get beat code for camera ID generation
-    const [beat] = await sql`SELECT code FROM beats WHERE id = ${beat_id}`;
-    if (!beat) {
-      return c.json({ error: 'Beat not found' }, 404);
-    }
-
-    // Auto-generate camera ID: BRAND-BEAT_CODE-CAM##
-    const [count] = await sql`SELECT COUNT(*) as count FROM cameras WHERE beat_id = ${beat_id}`;
-    const nextNumber = (parseInt(count.count) + 1).toString().padStart(2, '0');
-    const camera_id = `${brand.code}-${beat.code}-CAM${nextNumber}`;
+    // Cast empty strings to null for UUID fields
+    const divId = division_id || null;
+    const rngId = range_id || null;
+    const btId = beat_id || null;
 
     const [camera] = await sql`
       INSERT INTO cameras (
-        camera_id, brand_id, camera_name, division_id, range_id, beat_id,
+        camera_id, division_id, range_id, beat_id,
         latitude, longitude, camera_model, serial_number,
         install_date, status, notes, created_by
       ) VALUES (
-        ${camera_id}, ${brand_id}, ${camera_name}, ${division_id || null}, ${range_id || null}, ${beat_id || null},
-        ${latitude}, ${longitude}, ${camera_model || null}, ${serial_number || null},
-        ${install_date || null}, ${status}, ${notes || null}, ${user.userId}
+        ${camera_id}, ${divId}, ${rngId}, ${btId},
+        ${latitude}, ${longitude}, ${camera_model}, ${serial_number},
+        ${install_date}, ${status}, ${notes}, ${user.userId}
       )
       RETURNING *
     `;
@@ -203,32 +172,16 @@ cameras.put('/:id', requireAuth, requireRoleLevel(2), async (c) => {
     const { id } = c.req.param();
     const updates = await c.req.json();
 
-    // Validate location if provided
-    if (updates.latitude || updates.longitude) {
-      if (!updates.latitude || !updates.longitude) {
-        return c.json({ error: 'Both latitude and longitude must be provided when updating location' }, 400);
-      }
-      // Validate India bounds
-      if (updates.latitude < 8.0 || updates.latitude > 37.0 || updates.longitude < 68.0 || updates.longitude > 97.0) {
-        return c.json({ error: 'Location must be within India bounds' }, 400);
-      }
-    }
-
     const [camera] = await sql`
       UPDATE cameras SET
-        camera_name = COALESCE(${updates.camera_name || null}, camera_name),
-        brand_id = COALESCE(${updates.brand_id || null}, brand_id),
+        camera_model = COALESCE(${updates.camera_model}, camera_model),
+        serial_number = COALESCE(${updates.serial_number}, serial_number),
+        status = COALESCE(${updates.status}, status),
+        notes = COALESCE(${updates.notes}, notes),
+        install_date = COALESCE(${updates.install_date}, install_date),
         division_id = COALESCE(${updates.division_id || null}, division_id),
         range_id = COALESCE(${updates.range_id || null}, range_id),
-        beat_id = COALESCE(${updates.beat_id || null}, beat_id),
-        camera_model = COALESCE(${updates.camera_model || null}, camera_model),
-        serial_number = COALESCE(${updates.serial_number || null}, serial_number),
-        latitude = COALESCE(${updates.latitude || null}, latitude),
-        longitude = COALESCE(${updates.longitude || null}, longitude),
-        status = COALESCE(${updates.status || null}, status),
-        notes = COALESCE(${updates.notes || null}, notes),
-        install_date = COALESCE(${updates.install_date || null}, install_date),
-        updated_at = CURRENT_TIMESTAMP
+        beat_id = COALESCE(${updates.beat_id || null}, beat_id)
       WHERE id = ${id} AND deleted_at IS NULL
       RETURNING *
     `;
@@ -240,7 +193,7 @@ cameras.put('/:id', requireAuth, requireRoleLevel(2), async (c) => {
     // Log audit
     await sql`
       INSERT INTO audit_logs (user_id, action, metadata)
-      VALUES (${user.userId}, 'camera_updated', ${JSON.stringify({ camera_id: id, updates })})
+      VALUES (${user.userId}, 'camera_updated', ${JSON.stringify({ camera_id: id })})
     `;
 
     return c.json({ message: 'Camera updated successfully', camera });

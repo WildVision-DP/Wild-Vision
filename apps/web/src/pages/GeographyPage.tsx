@@ -18,7 +18,7 @@ export default function GeographyPage() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [activeTab, setActiveTab] = useState<'circles' | 'divisions' | 'ranges' | 'beats'>('circles');
-    
+
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingItem, setEditingItem] = useState<any>(null);
     const [deleteConfirm, setDeleteConfirm] = useState<{ isOpen: boolean; type: string; id: string | null }>({ isOpen: false, type: '', id: null });
@@ -31,7 +31,7 @@ export default function GeographyPage() {
     console.log('GeographyPage render - State:', {
         circles: Array.isArray(circles) ? circles.length : 'not array',
         divisions: Array.isArray(divisions) ? divisions.length : 'not array',
-        ranges: Array.isArray(ranges) ? ranges.length : 'not array', 
+        ranges: Array.isArray(ranges) ? ranges.length : 'not array',
         beats: Array.isArray(beats) ? beats.length : 'not array',
         loading,
         error,
@@ -64,10 +64,10 @@ export default function GeographyPage() {
             const headers = { 'Authorization': `Bearer ${token}` };
 
             const [circlesRes, divisionsRes, rangesRes, beatsRes] = await Promise.all([
-                fetch('http://localhost:4000/geography/circles', { headers }),
-                fetch('http://localhost:4000/geography/divisions', { headers }),
-                fetch('http://localhost:4000/geography/ranges', { headers }),
-                fetch('http://localhost:4000/geography/beats', { headers })
+                fetch('/api/geography/circles', { headers }),
+                fetch('/api/geography/divisions', { headers }),
+                fetch('/api/geography/ranges', { headers }),
+                fetch('/api/geography/beats', { headers })
             ]);
 
             console.log('Geography: Response statuses:', {
@@ -130,7 +130,7 @@ export default function GeographyPage() {
         try {
             const token = localStorage.getItem('accessToken');
             const endpoint = activeTab === 'circles' ? 'circles' : activeTab === 'divisions' ? 'divisions' : activeTab === 'ranges' ? 'ranges' : 'beats';
-            const response = await fetch(`http://localhost:4000/geography/${endpoint}`, {
+            const response = await fetch(`/api/geography/${endpoint}`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -157,7 +157,7 @@ export default function GeographyPage() {
         try {
             const token = localStorage.getItem('accessToken');
             const endpoint = activeTab === 'circles' ? 'circles' : activeTab === 'divisions' ? 'divisions' : activeTab === 'ranges' ? 'ranges' : 'beats';
-            const response = await fetch(`http://localhost:4000/geography/${endpoint}/${editingItem.id}`, {
+            const response = await fetch(`/api/geography/${endpoint}/${editingItem.id}`, {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',
@@ -189,7 +189,7 @@ export default function GeographyPage() {
         try {
             const token = localStorage.getItem('accessToken');
             const endpoint = deleteConfirm.type;
-            const response = await fetch(`http://localhost:4000/geography/${endpoint}/${deleteConfirm.id}`, {
+            const response = await fetch(`/api/geography/${endpoint}/${deleteConfirm.id}`, {
                 method: 'DELETE',
                 headers: {
                     'Authorization': `Bearer ${token}`,
@@ -425,7 +425,7 @@ export default function GeographyPage() {
                     </div>
                     <h2 className="text-xl font-semibold text-gray-900 mb-2">Error Loading Geography Data</h2>
                     <p className="text-gray-600 mb-4">{error}</p>
-                    <button 
+                    <button
                         onClick={() => {
                             setError(null);
                             fetchAll();
@@ -483,41 +483,37 @@ export default function GeographyPage() {
             <div className="flex gap-4 mb-6 border-b border-gray-200">
                 <button
                     onClick={() => setActiveTab('circles')}
-                    className={`px-4 py-2 font-medium transition-colors border-b-2 ${
-                        activeTab === 'circles'
+                    className={`px-4 py-2 font-medium transition-colors border-b-2 ${activeTab === 'circles'
                             ? 'border-green-700 text-green-700'
                             : 'border-transparent text-gray-600 hover:text-gray-900'
-                    }`}
+                        }`}
                 >
                     Circles ({(circles || []).length})
                 </button>
                 <button
                     onClick={() => setActiveTab('divisions')}
-                    className={`px-4 py-2 font-medium transition-colors border-b-2 ${
-                        activeTab === 'divisions'
+                    className={`px-4 py-2 font-medium transition-colors border-b-2 ${activeTab === 'divisions'
                             ? 'border-green-700 text-green-700'
                             : 'border-transparent text-gray-600 hover:text-gray-900'
-                    }`}
+                        }`}
                 >
                     Divisions ({(divisions || []).length})
                 </button>
                 <button
                     onClick={() => setActiveTab('ranges')}
-                    className={`px-4 py-2 font-medium transition-colors border-b-2 ${
-                        activeTab === 'ranges'
+                    className={`px-4 py-2 font-medium transition-colors border-b-2 ${activeTab === 'ranges'
                             ? 'border-green-700 text-green-700'
                             : 'border-transparent text-gray-600 hover:text-gray-900'
-                    }`}
+                        }`}
                 >
                     Ranges ({(ranges || []).length})
                 </button>
                 <button
                     onClick={() => setActiveTab('beats')}
-                    className={`px-4 py-2 font-medium transition-colors border-b-2 ${
-                        activeTab === 'beats'
+                    className={`px-4 py-2 font-medium transition-colors border-b-2 ${activeTab === 'beats'
                             ? 'border-green-700 text-green-700'
                             : 'border-transparent text-gray-600 hover:text-gray-900'
-                    }`}
+                        }`}
                 >
                     Beats ({(beats || []).length})
                 </button>

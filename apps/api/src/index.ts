@@ -46,7 +46,16 @@ app.route('/geography', geographyRoutes);
 app.route('/users', userRoutes);
 
 // Brand routes
+// Brand routes
 app.route('/brands', brandRoutes);
+
+// Upload routes
+import uploadRoutes from './routes/upload';
+app.route('/upload', uploadRoutes);
+
+// Image routes
+import imageRoutes from './routes/images';
+app.route('/images', imageRoutes);
 
 const port = process.env.API_PORT || 4000;
 

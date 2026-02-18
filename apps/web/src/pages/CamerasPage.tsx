@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import MapComponent from '../components/MapComponent';
 import { Button } from '@/components/ui/button';
-import { Plus, Edit2, Trash2, List, Map as MapIcon, TestTube, Settings } from 'lucide-react';
+import { Plus, Edit2, Trash2, List, Map as MapIcon, TestTube, Settings, Image as ImageIcon } from 'lucide-react';
+import CameraGallery from '@/components/CameraGallery';
 import Modal from '@/components/ui/Modal';
 import CameraForm from '@/components/CameraForm';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
@@ -15,6 +16,7 @@ export default function CamerasPage() {
     const [viewMode, setViewMode] = useState<'map' | 'list'>('map');
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingCamera, setEditingCamera] = useState<any>(null);
+    const [viewGalleryId, setViewGalleryId] = useState<string | null>(null);
     const [deleteConfirm, setDeleteConfirm] = useState<{ isOpen: boolean; cameraId: string | null }>({ isOpen: false, cameraId: null });
     const [alert, setAlert] = useState<{ isOpen: boolean; title: string; message: string; variant: 'error' | 'success' }>({ isOpen: false, title: '', message: '', variant: 'error' });
     const [testMode, setTestMode] = useState(false);
@@ -26,12 +28,19 @@ export default function CamerasPage() {
         fetchCameras();
         // Test Google Maps API on load
         testMapAPI();
+
+        // Listen for map popup events
+        const handleOpenGallery = (e: any) => {
+            if (e.detail) setViewGalleryId(e.detail);
+        };
+        window.addEventListener('open-camera-gallery', handleOpenGallery);
+        return () => window.removeEventListener('open-camera-gallery', handleOpenGallery);
     }, []);
 
     const testMapAPI = async () => {
         const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
         const result = await testGoogleMapsAPI(apiKey);
-        
+
         if (!result.success) {
             console.warn('Google Maps API test failed:', result.error);
             console.warn('Details:', result.details);
@@ -44,16 +53,16 @@ export default function CamerasPage() {
         try {
             setLoading(true);
             const token = localStorage.getItem('accessToken');
-            
+
             if (!token) {
                 console.warn('No access token found');
                 setCameras([]);
                 setLoading(false);
                 return;
             }
-            
+
             console.log('Fetching cameras...');
-            const response = await fetch('http://localhost:4000/cameras', {
+            const response = await fetch('/api/cameras', {
                 headers: {
                     'Authorization': `Bearer ${token}`,
                 },
@@ -84,7 +93,7 @@ export default function CamerasPage() {
     const handleCreate = async (data: any) => {
         try {
             const token = localStorage.getItem('accessToken');
-            const response = await fetch('http://localhost:4000/cameras', {
+            const response = await fetch('/api/cameras', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -120,7 +129,7 @@ export default function CamerasPage() {
         console.log('CamerasPage: Editing camera ID:', editingCamera.id);
         try {
             const token = localStorage.getItem('accessToken');
-            const response = await fetch(`http://localhost:4000/cameras/${editingCamera.id}`, {
+            const response = await fetch(`/api/cameras/${editingCamera.id}`, {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',
@@ -130,7 +139,7 @@ export default function CamerasPage() {
             });
 
             console.log('CamerasPage: Update response status:', response.status);
-            
+
             if (response.ok) {
                 const responseData = await response.json();
                 console.log('CamerasPage: Update successful:', responseData);
@@ -164,7 +173,7 @@ export default function CamerasPage() {
         if (!deleteConfirm.cameraId) return;
         try {
             const token = localStorage.getItem('accessToken');
-            const response = await fetch(`http://localhost:4000/cameras/${deleteConfirm.cameraId}`, {
+            const response = await fetch(`/api/cameras/${deleteConfirm.cameraId}`, {
                 method: 'DELETE',
                 headers: {
                     'Authorization': `Bearer ${token}`,
@@ -234,51 +243,51 @@ export default function CamerasPage() {
                         </div>
                     </div>
                     <div className="flex gap-3">
-                    <div className="bg-gray-100 p-1 rounded-lg flex">
-                        <button
-                            onClick={() => setViewMode('map')}
-                            className={`p-2 rounded-md transition-all ${viewMode === 'map' ? 'bg-white shadow-sm text-green-700' : 'text-gray-500 hover:text-gray-900'}`}
+                        <div className="bg-gray-100 p-1 rounded-lg flex">
+                            <button
+                                onClick={() => setViewMode('map')}
+                                className={`p-2 rounded-md transition-all ${viewMode === 'map' ? 'bg-white shadow-sm text-green-700' : 'text-gray-500 hover:text-gray-900'}`}
+                            >
+                                <MapIcon size={18} />
+                            </button>
+                            <button
+                                onClick={() => setViewMode('list')}
+                                className={`p-2 rounded-md transition-all ${viewMode === 'list' ? 'bg-white shadow-sm text-green-700' : 'text-gray-500 hover:text-gray-900'}`}
+                            >
+                                <List size={18} />
+                            </button>
+                        </div>
+                        <Button
+                            onClick={() => setShowDiagnostics(true)}
+                            variant="outline"
+                            className="border-gray-200 text-gray-700 hover:bg-gray-50"
                         >
-                            <MapIcon size={18} />
-                        </button>
-                        <button
-                            onClick={() => setViewMode('list')}
-                            className={`p-2 rounded-md transition-all ${viewMode === 'list' ? 'bg-white shadow-sm text-green-700' : 'text-gray-500 hover:text-gray-900'}`}
-                        >
-                            <List size={18} />
-                        </button>
-                    </div>
-                    <Button 
-                        onClick={() => setShowDiagnostics(true)}
-                        variant="outline" 
-                        className="border-gray-200 text-gray-700 hover:bg-gray-50"
-                    >
-                        <Settings className="mr-2 h-4 w-4" /> 
-                        Diagnostics
-                    </Button>
-                    {cameras.length === 0 && (
-                        <Button 
-                            onClick={() => {
-                                setTestMode(!testMode);
-                                if (!testMode) {
-                                    setAlert({ 
-                                        isOpen: true, 
-                                        title: 'Test Mode Enabled', 
-                                        message: 'Showing sample camera data for map testing', 
-                                        variant: 'success' 
-                                    });
-                                }
-                            }}
-                            variant="outline" 
-                            className="border-blue-200 text-blue-700 hover:bg-blue-50"
-                        >
-                            <TestTube className="mr-2 h-4 w-4" /> 
-                            {testMode ? 'Exit Test' : 'Test Map'}
+                            <Settings className="mr-2 h-4 w-4" />
+                            Diagnostics
                         </Button>
-                    )}
-                    <Button onClick={openCreateModal} className="bg-green-700 hover:bg-green-800">
-                        <Plus className="mr-2 h-4 w-4" /> Add Camera
-                    </Button>
+                        {cameras.length === 0 && (
+                            <Button
+                                onClick={() => {
+                                    setTestMode(!testMode);
+                                    if (!testMode) {
+                                        setAlert({
+                                            isOpen: true,
+                                            title: 'Test Mode Enabled',
+                                            message: 'Showing sample camera data for map testing',
+                                            variant: 'success'
+                                        });
+                                    }
+                                }}
+                                variant="outline"
+                                className="border-blue-200 text-blue-700 hover:bg-blue-50"
+                            >
+                                <TestTube className="mr-2 h-4 w-4" />
+                                {testMode ? 'Exit Test' : 'Test Map'}
+                            </Button>
+                        )}
+                        <Button onClick={openCreateModal} className="bg-green-700 hover:bg-green-800">
+                            <Plus className="mr-2 h-4 w-4" /> Add Camera
+                        </Button>
                     </div>
                 </div>
             </div>
@@ -286,8 +295,8 @@ export default function CamerasPage() {
             <div className="flex-1 bg-white rounded-lg border border-gray-200 overflow-hidden shadow-sm relative min-h-[500px]">
                 {viewMode === 'map' ? (
                     <div className="h-full w-full">
-                        <MapComponent 
-                            cameras={testMode && cameras.length === 0 ? defaultTestCameras : cameras} 
+                        <MapComponent
+                            cameras={testMode && cameras.length === 0 ? defaultTestCameras : cameras}
                         />
                         {testMode && cameras.length === 0 && (
                             <div className="absolute top-4 left-4 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 text-sm text-blue-800">
@@ -321,8 +330,8 @@ export default function CamerasPage() {
                                         <td className="px-6 py-4 text-gray-600">{[cam.division_name, cam.range_name, cam.beat_name].filter(Boolean).join(' > ') || 'N/A'}</td>
                                         <td className="px-6 py-4">
                                             <span className={`px-2 py-1 rounded-full text-xs font-semibold ${cam.status === 'active' ? 'bg-green-100 text-green-800' :
-                                                    cam.status === 'maintenance' ? 'bg-yellow-100 text-yellow-800' :
-                                                        'bg-gray-100 text-gray-800'
+                                                cam.status === 'maintenance' ? 'bg-yellow-100 text-yellow-800' :
+                                                    'bg-gray-100 text-gray-800'
                                                 }`}>
                                                 {cam.status}
                                             </span>
@@ -333,6 +342,13 @@ export default function CamerasPage() {
                                                 className="text-blue-600 hover:text-blue-800 p-1 bg-blue-50 rounded"
                                             >
                                                 <Edit2 size={16} />
+                                            </button>
+                                            <button
+                                                onClick={() => setViewGalleryId(cam.id || cam.camera_id)}
+                                                className="text-purple-600 hover:text-purple-800 p-1 bg-purple-50 rounded"
+                                                title="View Gallery"
+                                            >
+                                                <ImageIcon size={16} />
                                             </button>
                                             <button
                                                 onClick={() => confirmDelete(cam.id)}
@@ -385,6 +401,13 @@ export default function CamerasPage() {
             {showDiagnostics && (
                 <MapDiagnostics onClose={() => setShowDiagnostics(false)} />
             )}
+
+            <CameraGallery
+                cameraId={viewGalleryId || ''}
+                cameraName={cameras.find(c => (c.id === viewGalleryId) || (c.camera_id === viewGalleryId))?.camera_name || 'Camera'}
+                isOpen={!!viewGalleryId}
+                onClose={() => setViewGalleryId(null)}
+            />
         </div>
     );
 }

@@ -1,8 +1,9 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
 import CamerasPage from './pages/CamerasPage';
 import UsersPage from './pages/UsersPage';
+import UploadPage from './pages/UploadPage';
 import GeographyPage from './pages/GeographyPage';
 import WildlifeMapPage from './pages/WildlifeMapPage';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -14,20 +15,24 @@ function App() {
     return (
         <BrowserRouter>
             <Routes>
-                <Route path="/" element={<LoginPage />} />
+                <Route path="/login" element={<LoginPage />} />
 
                 {/* Protected Dashboard Layout */}
                 <Route element={<ProtectedRoute><Layout /></ProtectedRoute>}>
                     <Route path="/dashboard" element={<DashboardPage />} />
                     <Route path="/cameras" element={<CamerasPage />} />
-                    <Route path="/wildlife-map" element={<WildlifeMapPage />} />
                     <Route path="/users" element={<UsersPage />} />
+                    <Route path="/upload" element={<UploadPage />} />
                     <Route path="/geography" element={
                         <ErrorBoundary>
                             <GeographyPage />
                         </ErrorBoundary>
                     } />
+                    <Route path="/map" element={<WildlifeMapPage />} />
+                    <Route path="/" element={<Navigate to="/dashboard" replace />} />
                 </Route>
+
+                <Route path="*" element={<Navigate to="/login" replace />} />
             </Routes>
         </BrowserRouter>
     );

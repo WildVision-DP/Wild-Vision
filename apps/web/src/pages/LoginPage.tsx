@@ -17,7 +17,7 @@ export default function LoginPage() {
         console.log('Login: Starting with email:', email);
 
         try {
-            const response = await fetch('http://localhost:4000/auth/login', {
+            const response = await fetch('/api/auth/login', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -85,10 +85,10 @@ export default function LoginPage() {
                     </CardDescription>
                 </CardHeader>
                 <CardContent>                    {error && (
-                        <div className="p-3 bg-red-50 border border-red-200 rounded-md mb-4">
-                            <p className="text-sm text-red-700">{error}</p>
-                        </div>
-                    )}
+                    <div className="p-3 bg-red-50 border border-red-200 rounded-md mb-4">
+                        <p className="text-sm text-red-700">{error}</p>
+                    </div>
+                )}
 
                     <form onSubmit={handleSubmit} className="space-y-4">
                         <div className="space-y-2">
