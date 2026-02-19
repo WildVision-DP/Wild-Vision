@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { requireAuth, requireRoleLevel } from '../middleware/auth';
 import minioClient, { getPresignedUrl, initMinio } from '../services/minio';
-import { extractMetadata } from '../services/metadata';
+import { extractMetadata, processImageMetadata } from '../services/metadata';
 import sql from '../db/connection';
 import { randomUUID } from 'crypto';
 import sharp from 'sharp';
@@ -128,9 +128,15 @@ upload.post('/complete', requireAuth, requireRoleLevel(1), async (c) => {
         }
         const buffer = Buffer.concat(chunks);
 
-        // 3. Extract Metadata (Task 3.1.3 - implemented separately)
+        // 3. Quick EXIF extraction — used only to capture taken_at timestamp
+        //    before the DB insert. Full metadata processing (Tasks 3.1.3.3–3.1.3.10)
+        //    is performed asynchronously via processImageMetadata() below.
         const metadata = await extractMetadata(buffer);
-        console.log('Extracted Metadata:', metadata);
+        console.log('[upload] Quick EXIF extraction done:', {
+            taken_at: metadata.date_time_original ?? null,
+            has_gps: metadata.gps_latitude != null,
+            serial: metadata.serial_number ?? null,
+        });
 
         // --- AI STUB START ---
         // TODO: Replace with actual YOLOv8 inference (Module 4 - Task 4.1.1)
@@ -180,20 +186,37 @@ upload.post('/complete', requireAuth, requireRoleLevel(1), async (c) => {
         }
 
         // 5. Create DB Record (Task 3.1.2.11)
+        //    metadata_status defaults to 'pending'; processImageMetadata() will
+        //    set it to 'completed' (or 'failed') after async processing.
+        const aiMetaStub: Record<string, unknown> = {
+            ai_prediction: (metadata as Record<string, unknown>).ai_prediction,
+            auto_verified:  (metadata as Record<string, unknown>).auto_verified ?? false,
+        };
+
         const [image] = await sql`
             INSERT INTO images (
                 camera_id, file_path, original_filename, file_size, mime_type,
                 taken_at, uploaded_by, metadata, status,
-                thumbnail_path, ai_confidence, review_status
+                thumbnail_path, ai_confidence, review_status,
+                metadata_status
             ) VALUES (
                 ${camera_id}, ${file_path}, ${original_filename}, ${file_size}, ${mime_type},
-                ${metadata.date_time_original || null}, ${user.userId}, ${sql.json(metadata as any)}, 'processed',
-                ${thumbnailPath}, ${confidence}, ${reviewStatus}
+                ${metadata.date_time_original || null}, ${user.userId},
+                ${sql.json(aiMetaStub as any)}, 'processed',
+                ${thumbnailPath}, ${confidence}, ${reviewStatus},
+                'pending'
             )
             RETURNING *
         `;
 
         console.log(`✅ Image upload completed: ${file_path} (confidence: ${confidence}%, status: ${reviewStatus})`);
+
+        // 6. Async full metadata pipeline — Task 3.1.3
+        //    Fire-and-forget: the HTTP response is returned immediately.
+        //    The background worker (metadata-worker.ts) will retry any failures.
+        processImageMetadata(image.id as string, buffer).catch((err) => {
+            console.warn(`[upload] Background metadata processing failed for ${image.id as string}:`, err);
+        });
 
         return c.json({ message: 'Upload completed and processed', image }, 201);
 

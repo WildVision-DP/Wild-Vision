@@ -61,6 +61,12 @@ app.route('/images', imageRoutes);
 import proxyRoutes from './routes/proxy';
 app.route('/proxy', proxyRoutes);
 
+// ─── Background Workers ────────────────────────────────────────────────────────
+// Task 3.1.3.11: Start the metadata background worker.
+// Polls for images with metadata_status='pending' and runs the full EXIF pipeline.
+import { startMetadataWorker } from './jobs/metadata-worker';
+startMetadataWorker();
+
 const port = process.env.API_PORT || 4000;
 
 console.log(`🐅 WildVision API running on http://localhost:${port}`);

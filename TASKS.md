@@ -256,19 +256,19 @@
 
 ---
 
-**Task 3.1.3** - Image Metadata Extraction | **P0** | **Status:** [ ] Not Started
+**Task 3.1.3** - Image Metadata Extraction | **P0** | **Status:** [x] Complete
 
-- [ ] **Task 3.1.3.1**: Install EXIF parsing library (exifr or similar)
-- [ ] **Task 3.1.3.2**: Create metadata extraction service
-- [ ] **Task 3.1.3.3**: Extract EXIF timestamp (DateTimeOriginal)
-- [ ] **Task 3.1.3.4**: Extract GPS coordinates from EXIF
-- [ ] **Task 3.1.3.5**: Extract camera serial number from EXIF
-- [ ] **Task 3.1.3.6**: Parse image dimensions (width, height)
-- [ ] **Task 3.1.3.7**: Bind image to camera_id based on EXIF or filename
-- [ ] **Task 3.1.3.8**: Perform geo-consistency check (camera location vs EXIF GPS)
-- [ ] **Task 3.1.3.9**: Store metadata in images table (JSONB column)
-- [ ] **Task 3.1.3.10**: Handle missing EXIF data gracefully
-- [ ] **Task 3.1.3.11**: Create background job for metadata extraction
+- [x] **Task 3.1.3.1**: Install EXIF parsing library (exifr or similar)
+- [x] **Task 3.1.3.2**: Create metadata extraction service
+- [x] **Task 3.1.3.3**: Extract EXIF timestamp (DateTimeOriginal)
+- [x] **Task 3.1.3.4**: Extract GPS coordinates from EXIF
+- [x] **Task 3.1.3.5**: Extract camera serial number from EXIF
+- [x] **Task 3.1.3.6**: Parse image dimensions (width, height)
+- [x] **Task 3.1.3.7**: Bind image to camera_id based on EXIF or filename
+- [x] **Task 3.1.3.8**: Perform geo-consistency check (camera location vs EXIF GPS)
+- [x] **Task 3.1.3.9**: Store metadata in images table (JSONB column)
+- [x] **Task 3.1.3.10**: Handle missing EXIF data gracefully
+- [x] **Task 3.1.3.11**: Create background job for metadata extraction
 
 ---
 
