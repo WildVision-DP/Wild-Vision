@@ -152,7 +152,7 @@ export default function UsersPage() {
         // I need to update users.ts to return role_id!
 
         // Hack: find role_id from role_name
-        const role = roles.find((r: any) => r.name === user.role_name);
+        const role: any = roles.find((r: any) => r.name === user.role_name);
         setEditingUser({ ...user, role_id: role?.id });
         setIsModalOpen(true);
     };

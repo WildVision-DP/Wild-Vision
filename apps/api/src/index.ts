@@ -65,7 +65,9 @@ const port = process.env.API_PORT || 4000;
 
 console.log(`🐅 WildVision API running on http://localhost:${port}`);
 
-export default {
+const server: { port: string | number; fetch: any } = {
     port,
     fetch: app.fetch,
 };
+
+export default server;

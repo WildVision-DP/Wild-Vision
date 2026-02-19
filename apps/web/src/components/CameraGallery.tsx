@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, Image as ImageIcon, CheckCircle, Clock, AlertTriangle, X } from 'lucide-react';
+import { Loader2, Image as ImageIcon, Clock, AlertTriangle, X } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 
 interface CameraGalleryProps {

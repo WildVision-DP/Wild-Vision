@@ -27,6 +27,8 @@
         "dist",
         "build",
         ".next",
-        "commitlint.config.js"
+        "commitlint.config.js",
+        "**/postcss.config.js",
+        "**/tailwind.config.js"
     ]
 }

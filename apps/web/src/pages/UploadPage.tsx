@@ -484,7 +484,7 @@ export default function UploadPage() {
     };
 
     const getSelectedCameraName = () => {
-        const cam = cameras.find(c => c.camera_id === selectedCameraId);
+        const cam = cameras.find(c => c.id === selectedCameraId || c.camera_id === selectedCameraId);
         return cam ? cam.camera_id : 'Unknown Camera';
     };
 

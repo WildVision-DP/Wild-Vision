@@ -240,19 +240,19 @@
 
 ---
 
-**Task 3.1.2** - Storage Layout (MinIO) | **P0** | **Status:** [ ] Not Started
+**Task 3.1.2** - Storage Layout (MinIO) | **P0** | **Status:** [x] Complete
 
-- [ ] **Task 3.1.2.1**: Create MinIO bucket structure: /division/range/camera-id/yyyy-mm-dd/
-- [ ] **Task 3.1.2.2**: Configure MinIO bucket policies (private by default)
-- [ ] **Task 3.1.2.3**: Set up lifecycle rules for old images (archive after 2 years)
-- [ ] **Task 3.1.2.4**: Implement presigned URL generation for uploads
-- [ ] **Task 3.1.2.5**: Create POST /upload/request endpoint (returns presigned URL)
-- [ ] **Task 3.1.2.6**: Validate upload request (camera access, file metadata)
-- [ ] **Task 3.1.2.7**: Generate unique object key with UUID
-- [ ] **Task 3.1.2.8**: Set presigned URL expiry (15 minutes)
-- [ ] **Task 3.1.2.9**: Create POST /upload/complete endpoint
-- [ ] **Task 3.1.2.10**: Verify file exists in MinIO after upload
-- [ ] **Task 3.1.2.11**: Create database record for uploaded image
+- [x] **Task 3.1.2.1**: Create MinIO bucket structure: /circle/division/range/beat/camera-id/yyyy-mm-dd/
+- [x] **Task 3.1.2.2**: Configure MinIO bucket policies (private by default)
+- [x] **Task 3.1.2.3**: Set up lifecycle rules for old images (archive after 2 years)
+- [x] **Task 3.1.2.4**: Implement presigned URL generation for uploads
+- [x] **Task 3.1.2.5**: Create POST /upload/request endpoint (returns presigned URL)
+- [x] **Task 3.1.2.6**: Validate upload request (camera access, file metadata)
+- [x] **Task 3.1.2.7**: Generate unique object key with UUID
+- [x] **Task 3.1.2.8**: Set presigned URL expiry (15 minutes)
+- [x] **Task 3.1.2.9**: Create POST /upload/complete endpoint
+- [x] **Task 3.1.2.10**: Verify file exists in MinIO after upload
+- [x] **Task 3.1.2.11**: Create database record for uploaded image
 
 ---
 

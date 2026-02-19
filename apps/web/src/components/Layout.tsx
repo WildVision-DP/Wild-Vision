@@ -1,9 +1,8 @@
-import { Outlet, NavLink, useNavigate } from 'react-router-dom';
+import { Outlet, NavLink } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { LogOut, Map, LayoutDashboard, User, MapPin, Shield, Upload } from 'lucide-react';
 
 export default function Layout() {
-    const navigate = useNavigate();
     const user = JSON.parse(localStorage.getItem('user') || '{}');
 
     const handleLogout = async () => {

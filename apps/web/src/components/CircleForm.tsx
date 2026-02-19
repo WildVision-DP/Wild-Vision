@@ -60,7 +60,7 @@ export default function CircleForm({ circle, onSubmit, onCancel }: CircleFormPro
     };
 
     // Generate code preview (like Range/Beat forms)
-    const words = formData.name.trim().split(/\s+/).filter(w => w.length > 0);
+    const words = formData.name.trim().split(/\s+/).filter((w: string) => w.length > 0);
     let codePreview = 'Enter name';
     if (words.length >= 2) {
         const base = (words[0].substring(0, 2) + words[1].substring(0, 2)).toUpperCase().replace(/[^A-Z]/g, '');

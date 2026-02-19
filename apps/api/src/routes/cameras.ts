@@ -15,14 +15,19 @@ cameras.get('/', requireAuth, async (c) => {
     // Build query based on user role
     let query = sql`
       SELECT 
-        c.id, c.camera_id, c.latitude::float, c.longitude::float, c.camera_model, 
+        c.id, c.camera_id, c.camera_name, c.latitude::float, c.longitude::float, c.camera_model, 
         c.serial_number, c.install_date, c.status, c.notes,
-        d.name as division_name, r.name as range_name, b.name as beat_name,
+        c.brand_id, c.division_id, c.range_id, c.beat_id,
+        d.name as division_name, d.circle_id,
+        r.name as range_name,
+        b.name as beat_name,
+        cb.name as brand_name,
         c.created_at, c.updated_at
       FROM cameras c
       LEFT JOIN divisions d ON c.division_id = d.id
       LEFT JOIN ranges r ON c.range_id = r.id
       LEFT JOIN beats b ON c.beat_id = b.id
+      LEFT JOIN camera_brands cb ON c.brand_id = cb.id
       WHERE c.deleted_at IS NULL
     `;
 
@@ -73,6 +78,27 @@ cameras.get('/', requireAuth, async (c) => {
   }
 });
 
+// GET /cameras/activity - Last image date per camera (used in reports)
+cameras.get('/activity', requireAuth, async (c) => {
+  try {
+    const activity = await sql`
+      SELECT
+        c.id                      as camera_id,
+        MAX(i.uploaded_at)::text  as last_upload,
+        MAX(i.taken_at)::text     as last_taken,
+        COUNT(i.id)::int          as image_count
+      FROM cameras c
+      LEFT JOIN images i ON i.camera_id = c.id
+      WHERE c.deleted_at IS NULL
+      GROUP BY c.id
+    `;
+    return c.json({ activity });
+  } catch (error) {
+    console.error('Camera activity error:', error);
+    return c.json({ error: 'Failed to fetch activity' }, 500);
+  }
+});
+
 // GET /cameras/:id - Get camera by ID
 cameras.get('/:id', requireAuth, async (c) => {
   try {
@@ -82,14 +108,16 @@ cameras.get('/:id', requireAuth, async (c) => {
       SELECT 
         c.*, 
         c.latitude::float, c.longitude::float,
-        d.name as division_name, 
+        d.name as division_name, d.circle_id,
         r.name as range_name, 
         b.name as beat_name,
+        cb.name as brand_name,
         u.full_name as created_by_name
       FROM cameras c
       LEFT JOIN divisions d ON c.division_id = d.id
       LEFT JOIN ranges r ON c.range_id = r.id
       LEFT JOIN beats b ON c.beat_id = b.id
+      LEFT JOIN camera_brands cb ON c.brand_id = cb.id
       LEFT JOIN users u ON c.created_by = u.id
       WHERE c.id = ${id} AND c.deleted_at IS NULL
     `;
@@ -111,6 +139,8 @@ cameras.post('/', requireAuth, requireRoleLevel(2), async (c) => {
     const user = c.get('user');
     const {
       camera_id,
+      camera_name,
+      brand_id,
       division_id,
       range_id,
       beat_id,
@@ -142,14 +172,16 @@ cameras.post('/', requireAuth, requireRoleLevel(2), async (c) => {
     const serialNum = serial_number || null;
     const installDt = install_date || null;
     const notesTxt = notes || null;
+    const camName = camera_name || null;
+    const brandId = brand_id || null;
 
     const [camera] = await sql`
       INSERT INTO cameras (
-        camera_id, division_id, range_id, beat_id,
+        camera_id, camera_name, brand_id, division_id, range_id, beat_id,
         latitude, longitude, camera_model, serial_number,
         install_date, status, notes, created_by
       ) VALUES (
-        ${camera_id}, ${divId}, ${rngId}, ${btId},
+        ${camera_id}, ${camName}, ${brandId}, ${divId}, ${rngId}, ${btId},
         ${latitude}, ${longitude}, ${camModel}, ${serialNum},
         ${installDt}, ${status}, ${notesTxt}, ${user.userId}
       )
@@ -178,6 +210,8 @@ cameras.put('/:id', requireAuth, requireRoleLevel(2), async (c) => {
 
     const [camera] = await sql`
       UPDATE cameras SET
+        camera_name = COALESCE(${updates.camera_name || null}, camera_name),
+        brand_id = COALESCE(${updates.brand_id || null}, brand_id),
         camera_model = COALESCE(${updates.camera_model}, camera_model),
         serial_number = COALESCE(${updates.serial_number}, serial_number),
         status = COALESCE(${updates.status}, status),

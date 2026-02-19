@@ -246,13 +246,14 @@ export default function CameraForm({ initialData, onSubmit, onCancel }: CameraFo
 
             await onSubmit({
                 camera_id: generatedCameraId,
+                camera_name: formData.camera_name,
+                brand_id: formData.brand_id,
                 division_id: formData.division_id,
                 range_id: formData.range_id,
                 beat_id: formData.beat_id,
-                camera_name: formData.camera_name, // Display name
-                camera_model: null, // Hardware model (not collected in this form)
-                serial_number: null, // Not collected in this form
-                install_date: new Date().toISOString().split('T')[0], // Today's date
+                camera_model: null,
+                serial_number: null,
+                install_date: new Date().toISOString().split('T')[0],
                 status: formData.status,
                 notes: formData.notes || null,
                 latitude: parseFloat(String(formData.latitude)),
