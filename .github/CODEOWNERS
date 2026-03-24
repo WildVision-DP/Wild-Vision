@@ -1,0 +1,23 @@
+# WildVision - Code Owners
+
+# Global owners (Forest Department Admin)
+* @forest-dept-admin
+
+# API Backend
+/apps/api/ @backend-team @forest-dept-admin
+
+# Web Dashboard
+/apps/web/ @frontend-team @forest-dept-admin
+
+# AI Node
+/apps/ai-node/ @ai-team @forest-dept-admin
+
+# Infrastructure
+/infra/ @devops-team @forest-dept-admin
+
+# Documentation
+/docs/ @forest-dept-admin
+
+# Configuration files
+*.json @forest-dept-admin
+*.md @forest-dept-admin
