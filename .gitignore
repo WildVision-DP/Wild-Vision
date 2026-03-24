@@ -1,0 +1,18 @@
+# Python virtual environments
+ml_env/
+.venv/
+venv/
+
+# Python cache/build artifacts
+__pycache__/
+*.py[cod]
+*.pyd
+.pytest_cache/
+
+# Local runtime/temp files
+*.log
+*.tmp
+*.temp
+
+# Local test/request payloads
+test-login.json
