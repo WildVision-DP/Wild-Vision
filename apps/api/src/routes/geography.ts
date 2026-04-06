@@ -1,4 +1,4 @@
-import { Hono } from 'hono';
+﻿import { Hono } from 'hono';
 import sql from '../db/connection';
 import { requireAuth, requireRole } from '../middleware/auth';
 
@@ -285,7 +285,7 @@ geography.put('/divisions/:id', requireAuth, requireRole('Admin', 'Chief Conserv
         const [division] = await sql`
             UPDATE divisions 
             SET name = ${name}, circle_id = ${circle_id}, boundary = ${boundaryGeom}, 
-                area_sq_km = ${area_sq_km || null}, perimeter_km = ${perimeter_km || null},
+                area = ${area_sq_km || null}, perimeter_km = ${perimeter_km || null},
                 updated_at = CURRENT_TIMESTAMP
             WHERE id = ${divisionId}
             RETURNING id, name, code, circle_id, area_sq_km, perimeter_km, updated_at
@@ -512,7 +512,7 @@ geography.put('/ranges/:id', requireAuth, requireRole('Admin', 'Chief Conservato
         const [range] = await sql`
             UPDATE ranges 
             SET name = ${name}, division_id = ${division_id}, boundary = ${boundaryGeom}, 
-                area_sq_km = ${area_sq_km || null}, perimeter_km = ${perimeter_km || null},
+                area = ${area_sq_km || null}, perimeter_km = ${perimeter_km || null},
                 updated_at = CURRENT_TIMESTAMP
             WHERE id = ${rangeId}
             RETURNING id, name, code, division_id, area_sq_km, perimeter_km, updated_at
@@ -674,7 +674,7 @@ geography.get('/beats', requireAuth, async (c) => {
                 FROM beats b
                 LEFT JOIN ranges r ON b.range_id = r.id
                 LEFT JOIN divisions d ON r.division_id = d.id
-                WHERE b.range_id = ${range_id}
+                WHERE r.division_id = ${division_id}
                 ORDER BY b.name
             `;
         } else if (division_id) {
@@ -792,7 +792,7 @@ geography.put('/beats/:id', requireAuth, requireRole('Admin', 'Chief Conservator
         const [beat] = await sql`
             UPDATE beats 
             SET name = ${name}, range_id = ${range_id}, boundary = ${boundaryGeom}, 
-                area_sq_km = ${area_sq_km || null}, perimeter_km = ${perimeter_km || null},
+                area = ${area_sq_km || null}, perimeter_km = ${perimeter_km || null},
                 updated_at = CURRENT_TIMESTAMP
             WHERE id = ${beatId}
             RETURNING id, name, code, range_id, area_sq_km, perimeter_km, updated_at
@@ -889,285 +889,6 @@ geography.get('/point-in-polygon', requireAuth, async (c) => {
     }
 });
 
-// POST /geography/divisions - Create division
-geography.post('/divisions', requireAuth, requireRole('Admin'), async (c) => {
-    try {
-        const { name, circle_id, area_sq_km, perimeter_km } = await c.req.json();
-
-        if (!name) {
-            return c.json({ error: 'Name is required' }, 400);
-        }
-
-        // Auto-generate code from name - take first letter of each word
-        const words = name.trim().split(/\s+/).filter(w => w.length > 0);
-        let code = '';
-        if (words.length >= 2) {
-            // Take first 2-3 letters from first two words
-            code = (words[0].substring(0, 2) + words[1].substring(0, 2)).toUpperCase().replace(/[^A-Z]/g, '');
-        } else if (words.length === 1) {
-            // Single word - take first 3-4 letters
-            code = words[0].substring(0, 4).toUpperCase().replace(/[^A-Z]/g, '');
-        }
-        if (code.length < 2) {
-            return c.json({ error: 'Name too short for code generation' }, 400);
-        }
-
-        // Check if code exists, if so append number
-        const [existing] = await sql`SELECT COUNT(*) as count FROM divisions WHERE code LIKE ${code + '%'}`;
-        const finalCode = parseInt(existing.count) > 0 ? `${code}${(parseInt(existing.count) + 1).toString().padStart(2, '0')}` : code;
-
-        const [division] = await sql`
-            INSERT INTO divisions (name, code, circle_id, area_sq_km, perimeter_km)
-            VALUES (${name}, ${finalCode}, ${circle_id || null}, ${area_sq_km ? parseFloat(area_sq_km) : null}, ${perimeter_km ? parseFloat(perimeter_km) : null})
-            RETURNING id, name, code, circle_id, area_sq_km, perimeter_km, created_at
-        `;
-
-        return c.json({ message: 'Division created successfully', division: { ...division, code: finalCode } }, 201);
-    } catch (error) {
-        console.error('Create division error:', error);
-        return c.json({ error: 'Failed to create division' }, 500);
-    }
-});
-
-// PUT /geography/divisions/:id - Update division
-geography.put('/divisions/:id', requireAuth, requireRole('Admin'), async (c) => {
-    try {
-        const { id } = c.req.param();
-        const { name, circle_id, area_sq_km, perimeter_km } = await c.req.json();
-
-        const [division] = await sql`
-            UPDATE divisions 
-            SET name = COALESCE(${name || null}, name),
-                circle_id = COALESCE(${circle_id || null}, circle_id),
-                area_sq_km = ${area_sq_km ? parseFloat(area_sq_km) : null},
-                perimeter_km = ${perimeter_km ? parseFloat(perimeter_km) : null}
-            WHERE id = ${id}
-            RETURNING id, name, code, circle_id, area_sq_km, perimeter_km
-        `;
-
-        if (!division) {
-            return c.json({ error: 'Division not found' }, 404);
-        }
-
-        return c.json({ message: 'Division updated successfully', division });
-    } catch (error) {
-        console.error('Update division error:', error);
-        return c.json({ error: 'Failed to update division' }, 500);
-    }
-});
-
-// DELETE /geography/divisions/:id - Delete division
-geography.delete('/divisions/:id', requireAuth, requireRole('Admin'), async (c) => {
-    try {
-        const { id } = c.req.param();
-
-        // Check if division has ranges
-        const [hasRanges] = await sql`SELECT id FROM ranges WHERE division_id = ${id} LIMIT 1`;
-        if (hasRanges) {
-            return c.json({ error: 'Cannot delete division with existing ranges' }, 400);
-        }
-
-        const [division] = await sql`DELETE FROM divisions WHERE id = ${id} RETURNING id`;
-        if (!division) {
-            return c.json({ error: 'Division not found' }, 404);
-        }
-
-        return c.json({ message: 'Division deleted successfully' });
-    } catch (error) {
-        console.error('Delete division error:', error);
-        return c.json({ error: 'Failed to delete division' }, 500);
-    }
-});
-
-// POST /geography/ranges - Create range
-geography.post('/ranges', requireAuth, requireRole('Admin'), async (c) => {
-    try {
-        const { name, division_id, area_sq_km, perimeter_km } = await c.req.json();
-
-        if (!name || !division_id) {
-            return c.json({ error: 'Name and division are required' }, 400);
-        }
-
-        // Get division code
-        const [division] = await sql`SELECT code FROM divisions WHERE id = ${division_id}`;
-        if (!division) {
-            return c.json({ error: 'Division not found' }, 404);
-        }
-
-        // Auto-generate code: DIV-RNG-01 format
-        const [count] = await sql`SELECT COUNT(*) as count FROM ranges WHERE division_id = ${division_id}`;
-        const nextNumber = (parseInt(count.count) + 1).toString().padStart(2, '0');
-        const code = `${division.code}-RNG-${nextNumber}`;
-
-        const [range] = await sql`
-            INSERT INTO ranges (name, code, division_id, area_sq_km, perimeter_km)
-            VALUES (${name}, ${code}, ${division_id}, ${area_sq_km ? parseFloat(area_sq_km) : null}, ${perimeter_km ? parseFloat(perimeter_km) : null})
-            RETURNING id, name, code, division_id, area_sq_km, perimeter_km, created_at
-        `;
-
-        return c.json({ message: 'Range created successfully', range: { ...range, code } }, 201);
-    } catch (error) {
-        console.error('Create range error:', error);
-        return c.json({ error: 'Failed to create range' }, 500);
-    }
-});
-
-// PUT /geography/ranges/:id - Update range
-geography.put('/ranges/:id', requireAuth, requireRole('Admin'), async (c) => {
-    try {
-        const { id } = c.req.param();
-        const { name, division_id, area_sq_km, perimeter_km } = await c.req.json();
-
-        // Parse and validate numeric values with proper precision
-        let parsedArea = null;
-        let parsedPerimeter = null;
-
-        if (area_sq_km !== undefined && area_sq_km !== null && area_sq_km !== '') {
-            parsedArea = parseFloat(area_sq_km);
-            if (isNaN(parsedArea) || parsedArea < 0) {
-                return c.json({ error: 'Area must be a valid positive number' }, 400);
-            }
-            // Round to 4 decimal places
-            parsedArea = Math.round(parsedArea * 10000) / 10000;
-        }
-
-        if (perimeter_km !== undefined && perimeter_km !== null && perimeter_km !== '') {
-            parsedPerimeter = parseFloat(perimeter_km);
-            if (isNaN(parsedPerimeter) || parsedPerimeter < 0) {
-                return c.json({ error: 'Perimeter must be a valid positive number' }, 400);
-            }
-            // Round to 4 decimal places
-            parsedPerimeter = Math.round(parsedPerimeter * 10000) / 10000;
-        }
-
-        const [range] = await sql`
-            UPDATE ranges 
-            SET name = COALESCE(${name || null}, name),
-                division_id = COALESCE(${division_id || null}, division_id),
-                area_sq_km = COALESCE(${parsedArea}, area_sq_km),
-                perimeter_km = COALESCE(${parsedPerimeter}, perimeter_km),
-                updated_at = CURRENT_TIMESTAMP
-            WHERE id = ${id}
-            RETURNING id, name, code, division_id, 
-                      ROUND(area_sq_km::numeric, 4) as area_sq_km, 
-                      ROUND(perimeter_km::numeric, 4) as perimeter_km
-        `;
-
-        if (!range) {
-            return c.json({ error: 'Range not found' }, 404);
-        }
-
-        return c.json({ message: 'Range updated successfully', range });
-    } catch (error) {
-        console.error('Update range error:', error);
-        return c.json({ error: 'Failed to update range' }, 500);
-    }
-});
-
-// DELETE /geography/ranges/:id - Delete range
-geography.delete('/ranges/:id', requireAuth, requireRole('Admin'), async (c) => {
-    try {
-        const { id } = c.req.param();
-
-        // Check if range has beats
-        const [hasBeats] = await sql`SELECT id FROM beats WHERE range_id = ${id} LIMIT 1`;
-        if (hasBeats) {
-            return c.json({ error: 'Cannot delete range with existing beats' }, 400);
-        }
-
-        const [range] = await sql`DELETE FROM ranges WHERE id = ${id} RETURNING id`;
-        if (!range) {
-            return c.json({ error: 'Range not found' }, 404);
-        }
-
-        return c.json({ message: 'Range deleted successfully' });
-    } catch (error) {
-        console.error('Delete range error:', error);
-        return c.json({ error: 'Failed to delete range' }, 500);
-    }
-});
-
-// POST /geography/beats - Create beat
-geography.post('/beats', requireAuth, requireRole('Admin'), async (c) => {
-    try {
-        const { name, range_id, area_sq_km, perimeter_km } = await c.req.json();
-
-        if (!name || !range_id) {
-            return c.json({ error: 'Name and range are required' }, 400);
-        }
-
-        // Get range code
-        const [range] = await sql`SELECT code FROM ranges WHERE id = ${range_id}`;
-        if (!range) {
-            return c.json({ error: 'Range not found' }, 404);
-        }
-
-        // Auto-generate code: DIV-RNG-N01-BT01 format
-        const [count] = await sql`SELECT COUNT(*) as count FROM beats WHERE range_id = ${range_id}`;
-        const nextNumber = (parseInt(count.count) + 1).toString().padStart(2, '0');
-        const code = `${range.code}-BT${nextNumber}`;
-
-        const [beat] = await sql`
-            INSERT INTO beats (name, code, range_id, area_sq_km, perimeter_km)
-            VALUES (${name}, ${code}, ${range_id}, ${area_sq_km ? parseFloat(area_sq_km) : null}, ${perimeter_km ? parseFloat(perimeter_km) : null})
-            RETURNING id, name, code, range_id, area_sq_km, perimeter_km, created_at
-        `;
-
-        return c.json({ message: 'Beat created successfully', beat: { ...beat, code } }, 201);
-    } catch (error) {
-        console.error('Create beat error:', error);
-        return c.json({ error: 'Failed to create beat' }, 500);
-    }
-});
-
-// PUT /geography/beats/:id - Update beat
-geography.put('/beats/:id', requireAuth, requireRole('Admin'), async (c) => {
-    try {
-        const { id } = c.req.param();
-        const { name, range_id, area_sq_km, perimeter_km } = await c.req.json();
-
-        const [beat] = await sql`
-            UPDATE beats 
-            SET name = COALESCE(${name || null}, name),
-                range_id = COALESCE(${range_id || null}, range_id),
-                area_sq_km = ${area_sq_km ? parseFloat(area_sq_km) : null},
-                perimeter_km = ${perimeter_km ? parseFloat(perimeter_km) : null}
-            WHERE id = ${id}
-            RETURNING id, name, code, range_id, area_sq_km, perimeter_km
-        `;
-
-        if (!beat) {
-            return c.json({ error: 'Beat not found' }, 404);
-        }
-
-        return c.json({ message: 'Beat updated successfully', beat });
-    } catch (error) {
-        console.error('Update beat error:', error);
-        return c.json({ error: 'Failed to update beat' }, 500);
-    }
-});
-
-// DELETE /geography/beats/:id - Delete beat
-geography.delete('/beats/:id', requireAuth, requireRole('Admin'), async (c) => {
-    try {
-        const { id } = c.req.param();
-
-        // Check if beat has cameras
-        const [hasCameras] = await sql`SELECT id FROM cameras WHERE beat_id = ${id} LIMIT 1`;
-        if (hasCameras) {
-            return c.json({ error: 'Cannot delete beat with existing cameras' }, 400);
-        }
-
-        const [beat] = await sql`DELETE FROM beats WHERE id = ${id} RETURNING id`;
-        if (!beat) {
-            return c.json({ error: 'Beat not found' }, 404);
-        }
-
-        return c.json({ message: 'Beat deleted successfully' });
-    } catch (error) {
-        console.error('Delete beat error:', error);
-        return c.json({ error: 'Failed to delete beat' }, 500);
-    }
-});
-
 export default geography;
+
+

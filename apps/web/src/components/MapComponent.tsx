@@ -1,5 +1,35 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 
+interface CameraAnalytics {
+    camera: {
+        id: string;
+        camera_id: string;
+        camera_name: string;
+        status: string;
+    };
+    analytics: {
+        timeframe_days: number;
+        total_detections: number;
+        confirmed_detections: number;
+        pending_detections: number;
+        rejected_detections: number;
+        average_confidence: number;
+        last_detection: string | null;
+        animals: Array<{
+            name: string;
+            scientific_name: string;
+            count: number;
+            avg_confidence: number;
+            last_seen: string;
+        }>;
+        approval_breakdown: {
+            total_approved: number;
+            auto_approved: number;
+            manual_approved: number;
+        };
+    };
+}
+
 interface MapComponentProps {
     cameras?: Array<{
         id: string;
@@ -20,6 +50,20 @@ interface MapComponentProps {
         status?: 'active' | 'resting' | 'unknown';
         last_seen?: string;
     }>;
+    detections?: Array<{
+        id: string;
+        detected_animal: string;
+        detected_animal_scientific: string;
+        detection_confidence: number;
+        auto_approved: boolean;
+        detection_status: 'auto_approved' | 'manual_approved' | 'pending_review' | 'rejected';
+        latitude?: number;
+        longitude?: number;
+        camera_latitude?: number;
+        camera_longitude?: number;
+        thumbnail_path?: string;
+        taken_at?: string;
+    }>;
     center?: { lat: number; lng: number };
     zoom?: number;
 }
@@ -27,26 +71,55 @@ interface MapComponentProps {
 export default function MapComponent({
     cameras = [],
     animals = [],
+    detections = [],
     center = { lat: 11.8, lng: 76.6 }, // Bandipur area
     zoom = 10
 }: MapComponentProps) {
     const mapRef = useRef<HTMLDivElement>(null);
     const [map, setMap] = useState<google.maps.Map | null>(null);
-    const markersRef = useRef<google.maps.Marker[]>([]);
+    const markersRef = useRef<google.maps.marker.AdvancedMarkerElement[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [mapFallback, setMapFallback] = useState(false);
     const mapInitializedRef = useRef(false);
     const activeInfoWindowRef = useRef<google.maps.InfoWindow | null>(null);
+    const [cameraAnalytics, setCameraAnalytics] = useState<Record<string, CameraAnalytics | null>>({});
+
+    // Fetch camera analytics
+    const fetchCameraAnalytics = useCallback(async (cameraId: string) => {
+        try {
+            const token = localStorage.getItem('token');
+            const response = await fetch(`/api/cameras/${cameraId}/analytics?timeframe=30`, {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                },
+            });
+
+            if (!response.ok) {
+                console.warn(`Failed to fetch analytics for camera ${cameraId}`);
+                return null;
+            }
+
+            const data: CameraAnalytics = await response.json();
+            setCameraAnalytics(prev => ({ ...prev, [cameraId]: data }));
+            return data;
+        } catch (err) {
+            console.error(`Error fetching analytics for camera ${cameraId}:`, err);
+            return null;
+        }
+    }, []);
 
     const initMap = useCallback(async () => {
         // Only guard against double‑init; the ref should be ready
         if (mapInitializedRef.current) return;
 
         const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
+        const mapId = import.meta.env.VITE_GOOGLE_MAPS_MAP_ID;
+        
         console.log('Initializing Google Maps...');
         console.log('API Key present:', !!apiKey);
-        console.log('API Key value:', apiKey ? apiKey.substring(0, 10) + '...' : 'none');
+        console.log('Map ID present:', !!mapId);
 
         if (!apiKey || apiKey === 'your_google_maps_api_key_here') {
             console.warn('Google Maps API key is missing or placeholder.');
@@ -68,8 +141,13 @@ export default function MapComponent({
             }, 10000); // 10 seconds hard cap
 
             // Load Google Maps script directly
+            // Include mapId in URL if available for Advanced Markers support
             const script = document.createElement('script');
-            script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=marker&region=IN&language=en&v=weekly`;
+            let scriptUrl = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=marker&region=IN&language=en&v=weekly`;
+            if (mapId) {
+                scriptUrl += `&map_ids=${mapId}`;
+            }
+            script.src = scriptUrl;
             script.async = true;
             script.defer = true;
 
@@ -83,7 +161,7 @@ export default function MapComponent({
 
             if (mapRef.current) {
                 console.log('Creating map instance...');
-                const googleMap = new google.maps.Map(mapRef.current, {
+                const mapOptions: google.maps.MapOptions = {
                     center,
                     zoom,
                     mapTypeControl: true,
@@ -103,11 +181,23 @@ export default function MapComponent({
                             stylers: [{ color: '#e8f5e9' }],
                         },
                     ],
-                });
+                };
+
+                // Add mapId if available (required for Advanced Markers)
+                if (mapId) {
+                    (mapOptions as any).mapId = mapId;
+                }
+
+                const googleMap = new google.maps.Map(mapRef.current, mapOptions);
 
                 // Wait for map to be fully initialized
                 google.maps.event.addListenerOnce(googleMap, 'idle', () => {
                     console.log('Map fully loaded and ready');
+                    if (mapId) {
+                        console.log('Advanced Markers enabled with Map ID');
+                    } else {
+                        console.log('Map initialized - Advanced Markers disabled (no Map ID available)');
+                    }
                     clearTimeout(timeoutId);
                     setMap(googleMap);
                     setLoading(false);
@@ -131,9 +221,14 @@ export default function MapComponent({
         if (!map || mapFallback) return;
 
         // Clear existing markers
-        markersRef.current.forEach(marker => marker.setMap(null));
+        markersRef.current.forEach((marker: any) => {
+            if (marker.map !== undefined) {
+                marker.map = null;
+            }
+        });
         markersRef.current = [];
 
+        const hasMapId = !!import.meta.env.VITE_GOOGLE_MAPS_MAP_ID;
         const hasCameras = cameras.length > 0;
         const hasAnimals = animals.length > 0;
 
@@ -144,101 +239,135 @@ export default function MapComponent({
         // Calculate bounds to fit all entities
         const bounds = new google.maps.LatLngBounds();
 
-        const newMarkers: google.maps.Marker[] = [];
-
-        // Add new markers for cameras
+        // Add markers for cameras
         cameras.forEach((camera) => {
             const position = { lat: camera.latitude, lng: camera.longitude };
             bounds.extend(position);
 
-            // Proper camera icon SVG path (camera with lens)
-            const cameraIconPath = 'M9 2L7.17 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2h-3.17L15 2H9zm3 15c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5z';
-
-            // Status-based colors
+            // Status-based colors for pin
             const statusColor = camera.status === 'active' ? '#22c55e' :
                 camera.status === 'maintenance' ? '#eab308' : '#ef4444';
 
-            const marker = new google.maps.Marker({
-                position,
-                map,
-                title: camera.camera_id,
-                icon: {
-                    path: cameraIconPath,
-                    scale: 1.5,
-                    fillColor: statusColor,
-                    fillOpacity: 1,
-                    strokeColor: '#ffffff',
-                    strokeWeight: 2,
-                    anchor: new google.maps.Point(12, 12),
-                },
-                animation: google.maps.Animation.DROP,
-            });
+            let marker: any;
 
-            // Create a separate label marker positioned below the camera icon
-            const labelMarker = new google.maps.Marker({
-                position: { lat: camera.latitude - 0.0008, lng: camera.longitude }, // Below the marker
-                map,
-                icon: {
-                    path: google.maps.SymbolPath.CIRCLE,
-                    scale: 0, // Invisible circle
-                    fillOpacity: 0,
-                    strokeOpacity: 0,
-                },
-                label: {
-                    text: camera.camera_id,
-                    color: '#0f172a',
-                    fontSize: '11px',
-                    fontWeight: '600',
-                },
-                zIndex: google.maps.Marker.MAX_ZINDEX + 1,
-            });
+            if (hasMapId && google.maps.marker?.AdvancedMarkerElement) {
+                // Use Advanced Markers if Map ID is available
+                const pinElement = new google.maps.marker.PinElement({
+                    background: statusColor,
+                    borderColor: '#ffffff',
+                    glyphColor: '#ffffff',
+                    scale: 1.4,
+                });
+
+                marker = new google.maps.marker.AdvancedMarkerElement({
+                    position,
+                    map,
+                    title: camera.camera_id,
+                    content: pinElement.element,
+                });
+            } else {
+                // Fallback to basic Marker API
+                marker = new google.maps.Marker({
+                    position,
+                    map,
+                    title: camera.camera_id,
+                    icon: {
+                        path: google.maps.SymbolPath.CIRCLE,
+                        scale: 8,
+                        fillColor: statusColor,
+                        fillOpacity: 1,
+                        strokeColor: '#ffffff',
+                        strokeWeight: 2,
+                    },
+                });
+            }
 
             const infoWindow = new google.maps.InfoWindow({
                 content: `
-                    <div style="padding: 0; min-width: 240px; font-family: system-ui, sans-serif; border-radius: 8px; overflow: hidden;">
+                    <div style="padding: 0; min-width: 320px; font-family: system-ui, sans-serif; border-radius: 8px; overflow: hidden;">
                         <div style="background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%); padding: 16px; text-align: center;">
                             <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="white" style="display: inline-block; margin-bottom: 8px;">
                                 <path d="M9 2L7.17 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2h-3.17L15 2H9zm3 15c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5z"/>
                             </svg>
                             <h3 style="font-weight: 600; margin: 0; color: white; font-size: 16px;">${camera.camera_id}</h3>
                         </div>
-                        <div style="padding: 16px; font-size: 13px; color: #555; line-height: 1.6;">
-                            <div style="margin: 8px 0; display: flex; align-items: center; gap: 8px;">
-                                <strong style="color: #333;">Status:</strong>
-                                <span style="background: ${camera.status === 'active' ? '#dcfce7' : camera.status === 'maintenance' ? '#fef3c7' : '#fee2e2'}; color: ${camera.status === 'active' ? '#16a34a' : camera.status === 'maintenance' ? '#ca8a04' : '#dc2626'}; padding: 2px 8px; border-radius: 4px; font-weight: 500; font-size: 11px;">
-                                    ${camera.status.toUpperCase()}
-                                </span>
-                            </div>
-                            ${camera.division_name ? `<div style="margin: 8px 0;"><strong style="color: #333;">Division:</strong> ${camera.division_name}</div>` : ''}
-                            ${camera.range_name ? `<div style="margin: 8px 0;"><strong style="color: #333;">Range:</strong> ${camera.range_name}</div>` : ''}
-                            ${camera.notes ? `<div style="margin: 8px 0;"><strong style="color: #333;">Notes:</strong> ${camera.notes}</div>` : ''}
-                            <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid #e5e7eb; font-size: 11px; color: #6b7280;">
-                                📍 ${camera.latitude.toFixed(6)}, ${camera.longitude.toFixed(6)}
-                            </div>
-                            <div style="margin-top: 8px; text-align: center;">
-                                <button 
-                                    onclick="window.dispatchEvent(new CustomEvent('open-camera-gallery', { detail: '${camera.id || camera.camera_id}' }))"
-                                    style="background: #fdf4ff; border: 1px solid #e879f9; color: #a21caf; border-radius: 4px; padding: 4px 12px; font-size: 11px; cursor: pointer; font-weight: 500;"
-                                >
-                                    View Gallery
-                                </button>
+                        <div id="analytics-${camera.id}" style="padding: 16px; font-size: 13px; color: #555; line-height: 1.6;">
+                            <div style="text-align: center; padding: 20px; color: #999;">
+                                <div style="display: inline-block; border: 2px solid #e5e7eb; border-top-color: #22c55e; border-radius: 50%; width: 24px; height: 24px; animation: spin 0.8s linear infinite;"></div>
+                                <p style="margin: 8px 0 0 0; font-size: 12px;">Loading analytics...</p>
                             </div>
                         </div>
+                        <div style="margin-top: 8px; text-align: center; padding: 0 16px 16px;">
+                            <button 
+                                onclick="window.dispatchEvent(new CustomEvent('open-camera-gallery', { detail: '${camera.id || camera.camera_id}' }))"
+                                style="background: #fdf4ff; border: 1px solid #e879f9; color: #a21caf; border-radius: 4px; padding: 4px 12px; font-size: 11px; cursor: pointer; font-weight: 500;"
+                            >
+                                View Gallery
+                            </button>
+                        </div>
                     </div>
+                    <style>
+                        @keyframes spin {
+                            to { transform: rotate(360deg); }
+                        }
+                    </style>
                 `,
             });
 
-            // Open details on click (no hover flicker)
-            marker.addListener('click', () => {
+            // Open details and fetch analytics on click
+            marker.addListener('click', async () => {
                 if (activeInfoWindowRef.current) {
                     activeInfoWindowRef.current.close();
                 }
-                infoWindow.open(map, marker);
+                infoWindow.open({
+                    anchor: marker,
+                    map,
+                });
                 activeInfoWindowRef.current = infoWindow;
+
+                // Fetch and update analytics
+                const analytics = cameraAnalytics[camera.id] || await fetchCameraAnalytics(camera.id);
+                if (analytics) {
+                    const analyticsDiv = document.getElementById(`analytics-${camera.id}`);
+                    if (analyticsDiv) {
+                        const animalStatsHtml = analytics.analytics.animals
+                            .slice(0, 5)
+                            .map((animal, idx) => `
+                                <div style="margin: 6px 0; padding: 8px; background: #f9fafb; border-radius: 4px; font-size: 12px;">
+                                    <strong style="color: #333;">${animal.name}</strong>
+                                    <span style="float: right; background: #dbeafe; color: #1e40af; padding: 2px 6px; border-radius: 3px; font-weight: 500;">${animal.count}</span>
+                                </div>
+                            `)
+                            .join('');
+
+                        analyticsDiv.innerHTML = `
+                            <div style="margin: 8px 0;">
+                                <strong style="color: #333;">📊 Detection Summary (Last 30 days)</strong>
+                            </div>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 8px 0;">
+                                <div style="background: #dcfce7; padding: 8px; border-radius: 4px; text-align: center;">
+                                    <div style="font-size: 18px; font-weight: bold; color: #16a34a;">${analytics.analytics.total_detections}</div>
+                                    <div style="font-size: 11px; color: #15803d;">Total Detections</div>
+                                </div>
+                                <div style="background: #dbeafe; padding: 8px; border-radius: 4px; text-align: center;">
+                                    <div style="font-size: 18px; font-weight: bold; color: #1e40af;">${analytics.analytics.confirmed_detections}</div>
+                                    <div style="font-size: 11px; color: #1e3a8a;">Confirmed</div>
+                                </div>
+                            </div>
+                            <div style="margin: 8px 0; border-top: 1px solid #e5e7eb; padding-top: 8px;">
+                                <strong style="color: #333; display: block; margin-bottom: 6px;">🦁 Animals Spotted:</strong>
+                                ${animalStatsHtml || '<div style="color: #999; font-size: 12px;">No animals detected</div>'}
+                            </div>
+                            <div style="margin: 8px 0; padding-top: 8px; border-top: 1px solid #e5e7eb; font-size: 11px; color: #6b7280;">
+                                <div><strong>Status:</strong> <span style="background: ${camera.status === 'active' ? '#dcfce7' : '#fee2e2'}; color: ${camera.status === 'active' ? '#16a34a' : '#dc2626'}; padding: 2px 6px; border-radius: 3px;">${camera.status.toUpperCase()}</span></div>
+                                ${analytics.analytics.last_detection ? `<div style="margin-top: 4px;"><strong>Last Detection:</strong> ${new Date(analytics.analytics.last_detection).toLocaleDateString()}</div>` : ''}
+                            </div>
+                        `;
+                    }
+                }
             });
 
-            newMarkers.push(marker);
-            newMarkers.push(labelMarker);
+            markersRef.current.push(marker);
         });
 
         // Add markers for animals (different style)
@@ -246,66 +375,165 @@ export default function MapComponent({
             const position = { lat: animal.latitude, lng: animal.longitude };
             bounds.extend(position);
 
-            const marker = new google.maps.Marker({
-                position,
-                map,
-                title: `${animal.name} (${animal.species})`,
-                icon: {
-                    path: google.maps.SymbolPath.BACKWARD_CLOSED_ARROW,
-                    scale: 10,
-                    fillColor: '#0ea5e9',
-                    fillOpacity: 0.95,
-                    strokeColor: '#0f172a',
-                    strokeWeight: 2,
-                },
-                animation: google.maps.Animation.DROP,
-            });
+            // Create blue pin for animals
+            let marker: any;
 
-            const infoWindow = new google.maps.InfoWindow({
+            if (hasMapId && google.maps.marker?.AdvancedMarkerElement) {
+                const pinElement = new google.maps.marker.PinElement({
+                    background: '#3b82f6',
+                    borderColor: '#ffffff',
+                    glyphColor: '#ffffff',
+                    scale: 1.2,
+                });
+
+                marker = new google.maps.marker.AdvancedMarkerElement({
+                    position,
+                    map,
+                    title: animal.name,
+                    content: pinElement.element,
+                });
+            } else {
+                marker = new google.maps.Marker({
+                    position,
+                    map,
+                    title: animal.name,
+                    icon: {
+                        path: google.maps.SymbolPath.CIRCLE,
+                        scale: 6,
+                        fillColor: '#3b82f6',
+                        fillOpacity: 1,
+                        strokeColor: '#ffffff',
+                        strokeWeight: 2,
+                    },
+                });
+            }
+
+            const animalInfoWindow = new google.maps.InfoWindow({
                 content: `
-                    <div style="padding: 12px; min-width: 220px; font-family: system-ui, sans-serif;">
-                        <h3 style="font-weight: 600; margin: 0 0 8px 0; color: #111; font-size: 16px;">${animal.name}</h3>
-                        <div style="font-size: 13px; color: #555; line-height: 1.5;">
-                            <div style="margin: 4px 0;"><strong>Species:</strong> ${animal.species}</div>
-                            ${animal.status ? `<div style="margin: 4px 0;"><strong>Status:</strong> ${animal.status}</div>` : ''}
-                            ${animal.last_seen ? `<div style="margin: 4px 0;"><strong>Last seen:</strong> ${animal.last_seen}</div>` : ''}
-                            <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #eee; font-size: 11px; color: #888;">
-                                🧭 ${animal.latitude.toFixed(6)}, ${animal.longitude.toFixed(6)}
-                            </div>
+                    <div style="padding: 8px; font-family: system-ui, sans-serif; min-width: 200px;">
+                        <h4 style="margin: 0 0 8px 0; color: #1f2937; font-weight: 600;">${animal.name}</h4>
+                        <div style="font-size: 12px; color: #555; line-height: 1.5;">
+                            <div><strong>Species:</strong> ${animal.species}</div>
+                            ${animal.status ? `<div><strong>Status:</strong> ${animal.status}</div>` : ''}
+                            ${animal.last_seen ? `<div><strong>Last seen:</strong> ${animal.last_seen}</div>` : ''}
                         </div>
                     </div>
                 `,
             });
 
             marker.addListener('click', () => {
-                infoWindow.open(map, marker);
+                if (activeInfoWindowRef.current) {
+                    activeInfoWindowRef.current.close();
+                }
+                animalInfoWindow.open({
+                    anchor: marker,
+                    map,
+                });
+                activeInfoWindowRef.current = animalInfoWindow;
             });
 
-            newMarkers.push(marker);
+            markersRef.current.push(marker);
         });
 
-        markersRef.current = newMarkers;
+        // Add markers for detections (animal detections from camera traps)
+        detections.forEach(detection => {
+            // Use camera location if detection doesn't have coordinates
+            const lat = detection.latitude || detection.camera_latitude;
+            const lng = detection.longitude || detection.camera_longitude;
+            
+            if (!lat || !lng) return; // Skip if no coordinates
 
-        // Fit map to show all markers with some delay to ensure markers are rendered
-        setTimeout(() => {
-            if (hasCameras || hasAnimals) {
-                try {
-                    map.fitBounds(bounds);
-                    const padding = { top: 60, right: 60, bottom: 60, left: 60 };
-                    map.fitBounds(bounds, padding);
+            const position = { lat, lng };
+            bounds.extend(position);
 
-                    // Ensure minimum zoom level
-                    const maxZoom = 15;
-                    const listener = google.maps.event.addListener(map, 'bounds_changed', () => {
-                        if (map.getZoom()! > maxZoom) map.setZoom(maxZoom);
-                        google.maps.event.removeListener(listener);
-                    });
-                } catch (e) {
-                    console.warn('Error fitting bounds:', e);
-                }
+            // Color-code based on status
+            const statusColor = detection.auto_approved ? '#10b981' : // Green for auto-approved
+                                detection.detection_status === 'manual_approved' ? '#3b82f6' : // Blue for manual-approved
+                                detection.detection_status === 'pending_review' ? '#f59e0b' : // Amber for pending
+                                '#ef4444'; // Red for rejected
+
+            let marker: any;
+
+            if (hasMapId && google.maps.marker?.AdvancedMarkerElement) {
+                const pinElement = new google.maps.marker.PinElement({
+                    background: statusColor,
+                    borderColor: '#ffffff',
+                    glyphColor: '#ffffff',
+                    scale: 1.3,
+                });
+
+                marker = new google.maps.marker.AdvancedMarkerElement({
+                    position,
+                    map,
+                    title: detection.detected_animal,
+                    content: pinElement.element,
+                });
+            } else {
+                marker = new google.maps.Marker({
+                    position,
+                    map,
+                    title: detection.detected_animal,
+                    icon: {
+                        path: google.maps.SymbolPath.CIRCLE,
+                        scale: 7,
+                        fillColor: statusColor,
+                        fillOpacity: 1,
+                        strokeColor: '#ffffff',
+                        strokeWeight: 2,
+                    },
+                });
             }
-        }, 100);
-    }, [map, cameras, animals, mapFallback]);
+
+            const statusLabel = detection.auto_approved ? '✓ Auto-Approved' :
+                               detection.detection_status === 'manual_approved' ? '✓ Verified' :
+                               detection.detection_status === 'pending_review' ? '⏳ Pending Review' :
+                               '✗ Rejected';
+
+            const thumbnailHtml = detection.thumbnail_path 
+                ? `<img src="/api/image/${detection.thumbnail_path}" alt="${detection.detected_animal}" style="width: 100px; height: 100px; object-fit: cover; border-radius: 4px; margin-bottom: 8px;" />`
+                : '';
+
+            const detectionInfoWindow = new google.maps.InfoWindow({
+                content: `
+                    <div style="padding: 12px; font-family: system-ui, sans-serif; min-width: 220px; max-width: 280px;">
+                        ${thumbnailHtml}
+                        <h4 style="margin: 0 0 4px 0; color: #1f2937; font-weight: 600; font-size: 16px;">${detection.detected_animal}</h4>
+                        <p style="margin: 0 0 8px 0; font-size: 12px; color: #6b7280; font-style: italic;">${detection.detected_animal_scientific || ''}</p>
+                        
+                        <div style="background: ${statusColor}; color: white; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; margin-bottom: 8px; display: inline-block;">
+                            ${statusLabel}
+                        </div>
+                        
+                        <div style="font-size: 12px; color: #555; line-height: 1.6; border-top: 1px solid #e5e7eb; padding-top: 8px; margin-top: 8px;">
+                            <div><strong>Confidence:</strong> ${Math.round(detection.detection_confidence * 100)}%</div>
+                            <div style="width: 100%; background: #e5e7eb; border-radius: 4px; height: 6px; margin-top: 4px; overflow: hidden;">
+                                <div  style="background: ${statusColor}; height: 100%; width: ${detection.detection_confidence * 100}%;"></div>
+                            </div>
+                            ${detection.taken_at ? `<div style="margin-top: 8px; font-size: 11px; color: #6b7280;">📅 ${new Date(detection.taken_at).toLocaleDateString()}</div>` : ''}
+                        </div>
+                    </div>
+                `,
+            });
+
+            marker.addListener('click', () => {
+                if (activeInfoWindowRef.current) {
+                    activeInfoWindowRef.current.close();
+                }
+                detectionInfoWindow.open({
+                    anchor: marker,
+                    map,
+                });
+                activeInfoWindowRef.current = detectionInfoWindow;
+            });
+
+            markersRef.current.push(marker);
+        });
+
+        // Fit map to bounds if there are markers
+        if (markersRef.current.length > 0) {
+            map.fitBounds(bounds);
+        }
+    }, [map, cameras, animals, detections, mapFallback]);
 
     // Always prefer the interactive map; never switch to the older fallback UI
     return (

@@ -33,6 +33,20 @@ async function seed() {
         // 3. Seed Administrative Boundaries (Geospatial)
         console.log('🌍 Seeding administrative boundaries...');
 
+        // Circle: Project Tiger
+        const [existingCircle] = await sql`SELECT id FROM circles WHERE code = 'CIR-001'`;
+        let circleId = existingCircle?.id;
+
+        if (!circleId) {
+            const [cir] = await sql`
+                INSERT INTO circles (name, code)
+                VALUES ('Project Tiger Circle', 'CIR-001')
+                RETURNING id
+            `;
+            circleId = cir.id;
+            console.log('   + Created Circle: Project Tiger Circle');
+        }
+
         // Division: Bandipur Tiger Reserve
         const [existingDiv] = await sql`SELECT id FROM divisions WHERE code = 'DIV-001'`;
         let divId = existingDiv?.id;
@@ -41,8 +55,8 @@ async function seed() {
             // Approx box around Bandipur
             const divPoly = 'POLYGON((76.1 11.5, 76.7 11.5, 76.7 11.9, 76.1 11.9, 76.1 11.5))';
             const [div] = await sql`
-                INSERT INTO divisions (name, code, boundary) 
-                VALUES ('Bandipur Tiger Reserve', 'DIV-001', ST_GeomFromText(${divPoly}, 4326))
+                INSERT INTO divisions (name, code, boundary, circle_id)
+                VALUES ('Bandipur Tiger Reserve', 'DIV-001', ST_GeomFromText(${divPoly}, 4326), ${circleId})
                 RETURNING id
             `;
             divId = div.id;

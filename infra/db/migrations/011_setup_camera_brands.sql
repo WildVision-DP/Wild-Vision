@@ -1,3 +1,4 @@
+ALTER TABLE camera_brands ADD COLUMN IF NOT EXISTS description TEXT;
 -- Create camera brands table
 CREATE TABLE IF NOT EXISTS camera_brands (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

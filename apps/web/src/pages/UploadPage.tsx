@@ -1,16 +1,18 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Progress } from '@/components/ui/progress';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Label } from '@/components/ui/label';
-import { Upload, X, CheckCircle, AlertCircle, RefreshCw, Camera, Image as ImageIcon, RotateCw } from 'lucide-react';
+import { Progress } from '@/components/ui/progress';
+import { Upload, X, AlertCircle, RefreshCw, Camera, Image as ImageIcon, CheckCircle, RotateCw } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
-import { initDB, addUploadToQueue, updateUploadStatus, getAllUploads, removeUpload } from '@/utils/indexedDB';
 import CameraGallery from '@/components/CameraGallery';
+import DetectionConfirmationModal from '@/components/DetectionConfirmationModal';
+import CameraCapture from '@/components/CameraCapture';
+import { addUploadToQueue, removeUpload, updateUploadStatus } from '@/utils/indexedDB';
 
-// Supported file types (3.1.1.3)
+// Supported file types
 const SUPPORTED_IMAGE_TYPES = {
     'image/jpeg': ['.jpg', '.jpeg'],
     'image/png': ['.png'],
@@ -22,8 +24,7 @@ const SUPPORTED_IMAGE_TYPES = {
     'image/tiff': ['.tif', '.tiff']
 };
 
-// Max file size: 50MB (3.1.1.4)
-const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB in bytes
+const MAX_FILE_SIZE = 50 * 1024 * 1024;
 
 interface UploadFileLocal {
     id: string;
@@ -31,117 +32,86 @@ interface UploadFileLocal {
     preview?: string;
     progress: number;
     status: 'pending' | 'uploading' | 'completed' | 'error';
-    error?: string;
     cameraId: string;
     timestamp: number;
     retryCount?: number;
+    error?: string;
 }
 
-export default function UploadPage() {
-    const [files, setFiles] = useState<UploadFileLocal[]>([]);
-    const [uploading, setUploading] = useState(false);
-    const [isOnline, setIsOnline] = useState(navigator.onLine);
-    const [validationErrors, setValidationErrors] = useState<string[]>([]);
-    const uploadAbortControllers = useRef<Map<string, AbortController>>(new Map());
+type PendingDetection = {
+    id: string;
+    thumbnail_path: string;
+    file_path: string;
+    detected_animal: string;
+    detected_animal_scientific: string;
+    confidence: number;
+    camera_id: string;
+};
 
-    // Hierarchy State
+export default function UploadPage() {
+    const [uploading, setUploading] = useState(false);
+    const [cameras, setCameras] = useState<any[]>([]);
+    const [selectedCameraId, setSelectedCameraId] = useState('');
+
     const [circles, setCircles] = useState<any[]>([]);
     const [divisions, setDivisions] = useState<any[]>([]);
     const [ranges, setRanges] = useState<any[]>([]);
     const [beats, setBeats] = useState<any[]>([]);
-    const [cameras, setCameras] = useState<any[]>([]);
-
     const [selectedCircle, setSelectedCircle] = useState('');
     const [selectedDivision, setSelectedDivision] = useState('');
     const [selectedRange, setSelectedRange] = useState('');
     const [selectedBeat, setSelectedBeat] = useState('');
-    const [selectedCameraId, setSelectedCameraId] = useState('');
 
-    // Gallery State
+    const [files, setFiles] = useState<UploadFileLocal[]>([]);
+    const [validationErrors, setValidationErrors] = useState<string[]>([]);
+    const [isOnline, setIsOnline] = useState(() =>
+        typeof navigator !== 'undefined' ? navigator.onLine : true
+    );
+    const [pendingDetection, setPendingDetection] = useState<PendingDetection | null>(null);
+    const [pendingFileId, setPendingFileId] = useState<string | null>(null);
     const [isGalleryOpen, setIsGalleryOpen] = useState(false);
+    const [isCameraOpen, setIsCameraOpen] = useState(false);
+    const uploadAbortControllers = useRef(new Map<string, AbortController>());
 
-    // Statistics (3.1.1.10)
-    const stats = {
-        total: files.length,
-        pending: files.filter(f => f.status === 'pending').length,
-        uploading: files.filter(f => f.status === 'uploading').length,
-        completed: files.filter(f => f.status === 'completed').length,
-        failed: files.filter(f => f.status === 'error').length,
-    };
+    const stats = useMemo(
+        () => ({
+            total: files.length,
+            pending: files.filter((f) => f.status === 'pending').length,
+            uploading: files.filter((f) => f.status === 'uploading').length,
+            completed: files.filter((f) => f.status === 'completed').length,
+            failed: files.filter((f) => f.status === 'error').length,
+        }),
+        [files]
+    );
 
-
-
-    // Load pending uploads & initial data (3.1.1.8 - Auto-resume on reconnection)
     useEffect(() => {
-        const loadUploads = async () => {
-            try {
-                await initDB();
-                const storedUploads = await getAllUploads();
-                const mapped = storedUploads.map((u: any) => ({
-                    ...u,
-                    preview: u.file && u.file.size < 10 * 1024 * 1024 ? URL.createObjectURL(u.file) : undefined,
-                    retryCount: u.retryCount || 0
-                }));
-                setFiles(mapped);
-            } catch (err) {
-                console.error('Failed to load uploads from DB:', err);
-            }
-        };
-        loadUploads();
-        fetchCircles();
-
-        // Auto-resume uploads when connection is restored (3.1.1.8)
-        const handleOnline = async () => {
-            setIsOnline(true);
-            console.log('Connection restored. Auto-resuming pending uploads...');
-            
-            // Get pending and error uploads from IndexedDB
-            const storedUploads = await getAllUploads();
-            const toResume = storedUploads.filter((u: any) => 
-                u.status === 'pending' || (u.status === 'error' && (u.retryCount || 0) < 3)
-            );
-            
-            if (toResume.length > 0) {
-                console.log(`Auto-resuming ${toResume.length} uploads...`);
-                // Auto-upload after a short delay
-                setTimeout(() => {
-                    toResume.forEach((upload: any) => {
-                        const fileData = files.find(f => f.id === upload.id);
-                        if (fileData) {
-                            uploadFile(fileData);
-                        }
-                    });
-                }, 1000);
-            }
-        };
-        
-        const handleOffline = () => {
-            setIsOnline(false);
-            console.log('Connection lost. Uploads will be queued.');
-        };
-        
-        window.addEventListener('online', handleOnline);
-        window.addEventListener('offline', handleOffline);
-        
+        const on = () => setIsOnline(true);
+        const off = () => setIsOnline(false);
+        window.addEventListener('online', on);
+        window.addEventListener('offline', off);
         return () => {
-            window.removeEventListener('online', handleOnline);
-            window.removeEventListener('offline', handleOffline);
+            window.removeEventListener('online', on);
+            window.removeEventListener('offline', off);
         };
     }, []);
 
-    // Fetchers
-    const fetchCircles = async () => {
-        try {
-            const token = localStorage.getItem('accessToken');
-            const res = await fetch('/api/geography/circles', {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-            if (res.ok) {
-                const data = await res.json();
-                setCircles(data.circles || []);
+    useEffect(() => {
+        const loadCircles = async () => {
+            try {
+                const token = localStorage.getItem('accessToken');
+                const res = await fetch('/api/geography/circles', {
+                    headers: { Authorization: `Bearer ${token}` },
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    setCircles(data.circles || []);
+                }
+            } catch (err) {
+                console.error('Failed to load circles:', err);
             }
-        } catch (err) { console.error(err); }
-    };
+        };
+        loadCircles();
+    }, []);
 
     const fetchDivisions = async (circleId: string) => {
         try {
@@ -310,7 +280,10 @@ export default function UploadPage() {
         await removeUpload(id);
     };
 
-    // Upload file with progress tracking and retry mechanism (3.1.1.5, 3.1.1.11)
+    /**
+     * Single-step upload: browser → POST /api/upload/direct (multipart) → API stores in MinIO → ML → DB.
+     * No presigned URLs (avoids 403 / CORS / signature issues).
+     */
     const uploadFile = async (fileStatus: UploadFileLocal) => {
         const maxRetries = 3;
         const currentRetry = fileStatus.retryCount || 0;
@@ -320,54 +293,55 @@ export default function UploadPage() {
             await updateUploadStatus(fileStatus.id, { status: 'uploading', progress: 0 });
 
             const token = localStorage.getItem('accessToken');
+            if (!token) throw new Error('Not logged in');
 
-            // 1. Get Presigned URL
-            const res = await fetch('/api/upload/request', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                body: JSON.stringify({
-                    filename: fileStatus.file.name,
-                    file_type: fileStatus.file.type,
-                    file_size: fileStatus.file.size,
-                    camera_id: fileStatus.cameraId
-                })
-            });
-
-            if (!res.ok) {
-                const errData = await res.json();
-                console.error('Upload request failed:', errData);
-                console.error('Request payload:', {
-                    filename: fileStatus.file.name,
-                    file_type: fileStatus.file.type,
-                    file_size: fileStatus.file.size,
-                    camera_id: fileStatus.cameraId
-                });
-                throw new Error(errData.error || 'Failed to get upload URL');
-            }
-            const { upload_url, file_path } = await res.json();
-
-            // 2. Upload to MinIO with progress tracking (3.1.1.5)
             await new Promise<void>((resolve, reject) => {
                 const xhr = new XMLHttpRequest();
                 const abortController = new AbortController();
                 uploadAbortControllers.current.set(fileStatus.id, abortController);
 
+                const form = new FormData();
+                form.append('file', fileStatus.file);
+                form.append('camera_id', fileStatus.cameraId);
+
                 xhr.upload.addEventListener('progress', (e) => {
                     if (e.lengthComputable) {
-                        const percentComplete = Math.round((e.loaded / e.total) * 100);
-                        setFiles(prev => prev.map(f => 
+                        const percentComplete = Math.round((e.loaded / e.total) * 85);
+                        setFiles(prev => prev.map(f =>
                             f.id === fileStatus.id ? { ...f, progress: percentComplete } : f
                         ));
-                        updateUploadStatus(fileStatus.id, { progress: percentComplete });
+                        void updateUploadStatus(fileStatus.id, { progress: percentComplete });
                     }
                 });
 
                 xhr.addEventListener('load', () => {
                     uploadAbortControllers.current.delete(fileStatus.id);
                     if (xhr.status >= 200 && xhr.status < 300) {
-                        resolve();
+                        try {
+                            const data = JSON.parse(xhr.responseText);
+                            // Support both old format (pending_detection) and new format (detection)
+                            const detection = data.pending_detection || data.detection;
+                            if (!detection) {
+                                reject(new Error('Invalid server response'));
+                                return;
+                            }
+                            setPendingDetection(detection);
+                            setPendingFileId(fileStatus.id);
+                            setFiles(prev => prev.map(f =>
+                                f.id === fileStatus.id ? { ...f, status: 'completed', progress: 100 } : f
+                            ));
+                            void updateUploadStatus(fileStatus.id, { status: 'completed', progress: 100 });
+                            resolve();
+                        } catch {
+                            reject(new Error('Failed to parse server response'));
+                        }
                     } else {
-                        reject(new Error(`Upload failed with status ${xhr.status}`));
+                        let msg = `Upload failed (${xhr.status})`;
+                        try {
+                            const err = JSON.parse(xhr.responseText);
+                            if (err.error) msg = err.error;
+                        } catch { /* ignore */ }
+                        reject(new Error(msg));
                     }
                 });
 
@@ -381,33 +355,14 @@ export default function UploadPage() {
                     reject(new Error('Upload cancelled'));
                 });
 
-                xhr.open('PUT', upload_url);
-                xhr.setRequestHeader('Content-Type', fileStatus.file.type);
-                xhr.send(fileStatus.file);
+                xhr.open('POST', '/api/upload/direct');
+                xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+                xhr.send(form);
 
-                // Handle abort signal
                 abortController.signal.addEventListener('abort', () => {
                     xhr.abort();
                 });
             });
-
-            // 3. Complete
-            const completeRes = await fetch('/api/upload/complete', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                body: JSON.stringify({
-                    file_path,
-                    camera_id: fileStatus.cameraId,
-                    original_filename: fileStatus.file.name,
-                    file_size: fileStatus.file.size,
-                    mime_type: fileStatus.file.type
-                })
-            });
-
-            if (!completeRes.ok) throw new Error('Failed to finalize upload');
-
-            setFiles(prev => prev.map(f => f.id === fileStatus.id ? { ...f, status: 'completed', progress: 100 } : f));
-            await updateUploadStatus(fileStatus.id, { status: 'completed', progress: 100 });
 
         } catch (error: any) {
             console.error(`Upload error for ${fileStatus.file.name}:`, error);
@@ -488,8 +443,91 @@ export default function UploadPage() {
         return cam ? cam.camera_id : 'Unknown Camera';
     };
 
+    // Handle confirmation of detected animal
+    const handleDetectionConfirm = async (editedAnimal?: string) => {
+        if (!pendingDetection) return;
 
+        try {
+            const token = localStorage.getItem('accessToken');
+            const confirmRes = await fetch('/api/upload/confirm', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({
+                    image_id: pendingDetection.id,
+                    confirmed: true,
+                    detected_animal: editedAnimal || pendingDetection.detected_animal
+                })
+            });
 
+            if (!confirmRes.ok) {
+                const errData = await confirmRes.json();
+                throw new Error(errData.error || 'Failed to confirm detection');
+            }
+
+            console.log('✅ Detection confirmed and saved:', editedAnimal || pendingDetection.detected_animal);
+            setPendingDetection(null);
+            setPendingFileId(null);
+        } catch (error: any) {
+            console.error('Confirmation error:', error);
+            throw error;
+        }
+    };
+
+    // Handle camera capture
+    const handleCameraCapture = async (file: File) => {
+        const id = uuidv4();
+        const uploadItem: UploadFileLocal = {
+            id,
+            file,
+            preview: URL.createObjectURL(file),
+            progress: 0,
+            status: 'pending',
+            cameraId: selectedCameraId || 'unknown',
+            timestamp: Date.now(),
+            retryCount: 0
+        };
+        
+        setFiles(prev => [...prev, uploadItem]);
+        await addUploadToQueue({
+            id: uploadItem.id,
+            file: uploadItem.file,
+            cameraId: uploadItem.cameraId,
+            status: uploadItem.status,
+            progress: 0,
+            timestamp: uploadItem.timestamp
+        });
+        
+        setIsCameraOpen(false);
+    };
+
+    // Handle rejection of detection - user wants to retake photo
+    const handleDetectionReject = async () => {
+        if (!pendingDetection || !pendingFileId) return;
+
+        try {
+            const token = localStorage.getItem('accessToken');
+            await fetch('/api/upload/confirm', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({
+                    image_id: pendingDetection.id,
+                    confirmed: false
+                })
+            });
+
+            // Reset UI
+            setPendingDetection(null);
+            setPendingFileId(null);
+            
+            // Reset file status so user can upload again
+            setFiles(prev => prev.map(f => 
+                f.id === pendingFileId ? { ...f, status: 'pending', progress: 0 } : f
+            ));
+            await updateUploadStatus(pendingFileId, { status: 'pending', progress: 0 });
+        } catch (error) {
+            console.error('Rejection error:', error);
+        }
+    };
 
 
     return (
@@ -640,14 +678,50 @@ export default function UploadPage() {
                     </CardContent>
                 </Card>
 
+                {/* 2. Upload/Capture Options */}
+                <Card className={!selectedCameraId ? 'opacity-50' : ''}>
+                    <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                            <Camera className="w-5 h-5" /> 2. Capture or Upload Image
+                        </CardTitle>
+                        <CardDescription>
+                            Choose to capture live from device camera or select from gallery/files
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                        {/* Clear action buttons */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <Button
+                                onClick={() => setIsCameraOpen(true)}
+                                disabled={!selectedCameraId}
+                                size="lg"
+                                className="h-16 flex flex-col items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700"
+                            >
+                                <Camera className="w-5 h-5" />
+                                <span>📷 Capture from Camera</span>
+                            </Button>
+                            <Button
+                                onClick={openFileSelector}
+                                disabled={!selectedCameraId}
+                                size="lg"
+                                variant="outline"
+                                className="h-16 flex flex-col items-center justify-center gap-2 hover:bg-green-50"
+                            >
+                                <Upload className="w-5 h-5" />
+                                <span>🖼 Select from Gallery</span>
+                            </Button>
+                        </div>
+                    </CardContent>
+                </Card>
+
                 {/* 2. Dropzone */}
                 <Card className={!selectedCameraId ? 'opacity-50' : ''}>
                     <CardHeader>
                         <CardTitle className="flex items-center gap-2">
-                            <Upload className="w-5 h-5" /> 2. Upload Images
+                            <Upload className="w-5 h-5" /> 3. Or Drag & Drop Images
                         </CardTitle>
                         <CardDescription>
-                            Supported formats: JPG, PNG, RAW (CR2, NEF, ARW, DNG, TIFF) • Max size: 50MB per file
+                            Files upload through the API to storage, then run animal detection. Formats: JPG, PNG, RAW (CR2, NEF, ARW, DNG, TIFF) • Max 50MB per file
                         </CardDescription>
                     </CardHeader>
                     <CardContent>
@@ -666,9 +740,6 @@ export default function UploadPage() {
                                     ? 'Drop files here or click the button below to select files' 
                                     : 'Please select a camera from the list above first'}
                             </p>
-                            <Button onClick={openFileSelector} disabled={!selectedCameraId}>
-                                Select Files
-                            </Button>
                         </div>
                     </CardContent>
                 </Card>
@@ -678,7 +749,7 @@ export default function UploadPage() {
                     <Card>
                         <CardHeader>
                             <div className="flex items-center justify-between">
-                                <CardTitle>3. Upload Queue ({files.length} files)</CardTitle>
+                                <CardTitle>4. Upload Queue ({files.length} files)</CardTitle>
                                 <div className="flex gap-2">
                                     <Button variant="outline" size="sm" onClick={handleClearQueue}>
                                         <X className="h-4 w-4 mr-2" /> Clear Finished
@@ -767,6 +838,28 @@ export default function UploadPage() {
                 cameraName={getSelectedCameraName()}
                 isOpen={isGalleryOpen}
                 onClose={() => setIsGalleryOpen(false)}
+            />
+
+            {/* Camera Capture/Upload Modal */}
+            <CameraCapture
+                isOpen={isCameraOpen}
+                onClose={() => setIsCameraOpen(false)}
+                onCapture={handleCameraCapture}
+                cameraId={selectedCameraId}
+                cameraName={getSelectedCameraName()}
+            />
+
+            {/* Detection Confirmation Modal */}
+            <DetectionConfirmationModal
+                isOpen={!!pendingDetection}
+                imageData={pendingDetection}
+                onConfirm={handleDetectionConfirm}
+                onReject={handleDetectionReject}
+                onClose={() => {
+                    setPendingDetection(null);
+                    setUploadedImageUrl(null);
+                    setPendingFileId(null);
+                }}
             />
         </div>
     );

@@ -71,7 +71,19 @@ auth.post('/register', async (c) => {
 // POST /auth/login
 auth.post('/login', async (c) => {
     try {
-        const { email, password } = await c.req.json();
+        let body;
+        try {
+            body = await c.req.json();
+        } catch (jsonError: any) {
+            console.error('JSON parse error details:', {
+                message: jsonError.message,
+                error: jsonError.toString(),
+                contentType: c.req.header('content-type'),
+            });
+            return c.json({ error: 'Invalid JSON in request body', details: jsonError.message }, 400);
+        }
+
+        const { email, password } = body;
 
         if (!email || !password) {
             return c.json({ error: 'Email and password required' }, 400);
@@ -80,7 +92,7 @@ auth.post('/login', async (c) => {
         // Get user with role info
         const [user] = await sql`
       SELECT u.id, u.email, u.password_hash, u.full_name, u.role_id, u.is_active,
-             r.name as role_name, r.level as role_level
+             r.name as role_name
       FROM users u
       JOIN roles r ON u.role_id = r.id
       WHERE u.email = ${email} AND u.deleted_at IS NULL
@@ -120,7 +132,6 @@ auth.post('/login', async (c) => {
             email: user.email,
             roleId: user.role_id,
             roleName: user.role_name,
-            roleLevel: user.role_level,
         });
 
         // Store session
@@ -151,12 +162,11 @@ auth.post('/login', async (c) => {
                 email: user.email,
                 fullName: user.full_name,
                 role: user.role_name,
-                roleLevel: user.role_level,
             },
         });
-    } catch (error) {
+    } catch (error: any) {
         console.error('Login error:', error);
-        return c.json({ error: 'Login failed' }, 500);
+        return c.json({ error: 'Login failed', details: error.message, stack: error.stack }, 500);
     }
 });
 

@@ -17,16 +17,16 @@ cameras.get('/', requireAuth, async (c) => {
       SELECT 
         c.id, c.camera_id, c.camera_name, c.latitude::float, c.longitude::float, c.camera_model, 
         c.serial_number, c.install_date, c.status, c.notes,
-        c.brand_id, c.division_id, c.range_id, c.beat_id,
-        d.name as division_name, d.circle_id,
-        r.name as range_name,
+        c.brand_id, c.beat_id,
+        d.id as division_id, d.name as division_name, d.circle_id,
+        r.id as range_id, r.name as range_name,
         b.name as beat_name,
         cb.name as brand_name,
         c.created_at, c.updated_at
       FROM cameras c
-      LEFT JOIN divisions d ON c.division_id = d.id
-      LEFT JOIN ranges r ON c.range_id = r.id
       LEFT JOIN beats b ON c.beat_id = b.id
+      LEFT JOIN ranges r ON b.range_id = r.id
+      LEFT JOIN divisions d ON r.division_id = d.id
       LEFT JOIN camera_brands cb ON c.brand_id = cb.id
       WHERE c.deleted_at IS NULL
     `;
@@ -34,8 +34,8 @@ cameras.get('/', requireAuth, async (c) => {
     // Apply filters
     const filters = [];
     if (status) filters.push(sql`c.status = ${status}`);
-    if (division_id) filters.push(sql`c.division_id = ${division_id}`);
-    if (range_id) filters.push(sql`c.range_id = ${range_id}`);
+    if (division_id) filters.push(sql`d.id = ${division_id}`);
+    if (range_id) filters.push(sql`r.id = ${range_id}`);
     if (beat_id) filters.push(sql`c.beat_id = ${beat_id}`);
 
     // Apply hierarchy restrictions for non-admin users
@@ -46,8 +46,8 @@ cameras.get('/', requireAuth, async (c) => {
         WHERE user_id = ${user.userId} AND is_primary = true
       `;
       if (assignment) {
-        if (assignment.division_id) filters.push(sql`c.division_id = ${assignment.division_id}`);
-        if (assignment.range_id) filters.push(sql`c.range_id = ${assignment.range_id}`);
+        if (assignment.division_id) filters.push(sql`d.id = ${assignment.division_id}`);
+        if (assignment.range_id) filters.push(sql`r.id = ${assignment.range_id}`);
         if (assignment.beat_id) filters.push(sql`c.beat_id = ${assignment.beat_id}`);
       }
     }
@@ -361,6 +361,100 @@ cameras.get('/:id/history', requireAuth, async (c) => {
   } catch (error) {
     console.error('Get camera history error:', error);
     return c.json({ error: 'Failed to fetch camera history' }, 500);
+  }
+});
+
+// GET /cameras/:id/analytics - Get detection analytics for a camera
+cameras.get('/:id/analytics', requireAuth, async (c) => {
+  try {
+    const { id } = c.req.param();
+    const { timeframe = '30' } = c.req.query(); // 30 days default
+
+    // Get camera details
+    const [camera] = await sql`
+      SELECT id, camera_id, camera_name, status
+      FROM cameras
+      WHERE id = ${id}
+    `;
+
+    if (!camera) {
+      return c.json({ error: 'Camera not found' }, 404);
+    }
+
+    // Get detection summary for this camera
+    const [summary] = await sql`
+      SELECT 
+        COUNT(*) as total_detections,
+        COUNT(CASE WHEN confirmation_status = 'confirmed' THEN 1 END) as confirmed_detections,
+        COUNT(CASE WHEN confirmation_status = 'pending_confirmation' THEN 1 END) as pending_detections,
+        COUNT(CASE WHEN confirmation_status = 'rejected' THEN 1 END) as rejected_detections,
+        MAX(taken_at) as last_detection,
+        AVG(CAST(detection_confidence as FLOAT)) as avg_confidence
+      FROM images
+      WHERE camera_id = ${id}
+      AND taken_at > NOW() - INTERVAL '${parseInt(timeframe)} days'
+    `;
+
+    // Get animal counts for this camera
+    const animalCounts = await sql`
+      SELECT 
+        detected_animal as animal,
+        detected_animal_scientific as scientific_name,
+        COUNT(*) as count,
+        AVG(CAST(detection_confidence as FLOAT)) as avg_confidence,
+        MAX(taken_at) as last_seen
+      FROM images
+      WHERE camera_id = ${id}
+      AND confirmation_status = 'confirmed'
+      AND taken_at > NOW() - INTERVAL '${parseInt(timeframe)} days'
+      GROUP BY detected_animal, detected_animal_scientific
+      ORDER BY count DESC
+    `;
+
+    // Get auto-approved vs manual approved breakdown
+    const [approvalBreakdown] = await sql`
+      SELECT 
+        COUNT(*) as total_approved,
+        COUNT(CASE WHEN approval_method = 'auto_approved' THEN 1 END) as auto_approved,
+        COUNT(CASE WHEN approval_method = 'manual_approved' THEN 1 END) as manual_approved
+      FROM images
+      WHERE camera_id = ${id}
+      AND confirmation_status = 'confirmed'
+      AND taken_at > NOW() - INTERVAL '${parseInt(timeframe)} days'
+    `;
+
+    return c.json({
+      camera: {
+        id: camera.id,
+        camera_id: camera.camera_id,
+        camera_name: camera.camera_name,
+        status: camera.status
+      },
+      analytics: {
+        timeframe_days: parseInt(timeframe),
+        total_detections: summary.total_detections || 0,
+        confirmed_detections: summary.confirmed_detections || 0,
+        pending_detections: summary.pending_detections || 0,
+        rejected_detections: summary.rejected_detections || 0,
+        average_confidence: summary.avg_confidence ? parseFloat(summary.avg_confidence) : 0,
+        last_detection: summary.last_detection,
+        animals: animalCounts.map((row: any) => ({
+          name: row.animal,
+          scientific_name: row.scientific_name,
+          count: row.count,
+          avg_confidence: parseFloat(row.avg_confidence),
+          last_seen: row.last_seen
+        })),
+        approval_breakdown: {
+          total_approved: approvalBreakdown.total_approved || 0,
+          auto_approved: approvalBreakdown.auto_approved || 0,
+          manual_approved: approvalBreakdown.manual_approved || 0
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Get camera analytics error:', error);
+    return c.json({ error: 'Failed to fetch camera analytics' }, 500);
   }
 });
 

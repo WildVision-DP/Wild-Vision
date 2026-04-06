@@ -8,7 +8,7 @@ const brands = new Hono();
 brands.get('/', requireAuth, async (c) => {
     try {
         const result = await sql`
-            SELECT id, name, code, created_at
+            SELECT id, name, description, created_at
             FROM camera_brands
             ORDER BY name
         `;
@@ -23,27 +23,23 @@ brands.get('/', requireAuth, async (c) => {
 brands.post('/', requireAuth, requireRole('System Admin'), async (c) => {
     try {
         const user = c.get('user');
-        const { name, code } = await c.req.json();
+        const { name, description } = await c.req.json();
 
-        if (!name || !code) {
-            return c.json({ error: 'Name and code are required' }, 400);
-        }
-
-        if (code.length !== 3) {
-            return c.json({ error: 'Code must be exactly 3 characters' }, 400);
+        if (!name) {
+            return c.json({ error: 'Name is required' }, 400);
         }
 
         const [brand] = await sql`
-            INSERT INTO camera_brands (name, code, created_by)
-            VALUES (${name}, ${code.toUpperCase()}, ${user.userId})
-            RETURNING id, name, code, created_at
+            INSERT INTO camera_brands (name, description)
+            VALUES (${name}, ${description || null})
+            RETURNING id, name, description, created_at
         `;
 
         return c.json({ message: 'Brand created successfully', brand }, 201);
     } catch (error: any) {
         console.error('Create brand error:', error);
         if (error.code === '23505') {
-            return c.json({ error: 'Brand name or code already exists' }, 409);
+            return c.json({ error: 'Brand name already exists' }, 409);
         }
         return c.json({ error: 'Failed to create brand' }, 500);
     }

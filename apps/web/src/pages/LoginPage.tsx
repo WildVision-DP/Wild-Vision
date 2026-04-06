@@ -1,8 +1,10 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
+import { apiRequest } from '@/config/api';
 
 export default function LoginPage() {
     const [email, setEmail] = useState('');
@@ -14,56 +16,30 @@ export default function LoginPage() {
         e.preventDefault();
         setError('');
         setLoading(true);
-        console.log('Login: Starting with email:', email);
 
         try {
-            const response = await fetch('/api/auth/login', {
+            const result = await apiRequest('/auth/login', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
                 body: JSON.stringify({ email, password }),
             });
 
-            console.log('Login: Response status:', response.status);
-            console.log('Login: Response headers:', Object.fromEntries(response.headers.entries()));
-
-            if (!response.ok) {
-                const errorText = await response.text();
-                console.error('Login: Error response:', errorText);
-                let errorMessage = 'Login failed';
-                try {
-                    const errorData = JSON.parse(errorText);
-                    errorMessage = errorData.error || 'Login failed';
-                } catch {
-                    errorMessage = errorText || 'Login failed';
-                }
-                throw new Error(errorMessage);
+            if (result.error) {
+                throw new Error(result.error);
             }
 
-            const responseText = await response.text();
-            console.log('Login: Raw response:', responseText);
-
-            let data;
-            try {
-                data = JSON.parse(responseText);
-                console.log('Login: Parsed data:', data);
-            } catch (parseError) {
-                console.error('Login: JSON parse error:', parseError);
+            if (!result.data) {
                 throw new Error('Invalid response from server');
             }
 
             // Store tokens
-            console.log('Login: Storing tokens...');
-            localStorage.setItem('accessToken', data.accessToken);
-            localStorage.setItem('refreshToken', data.refreshToken);
-            localStorage.setItem('user', JSON.stringify(data.user));
+            const response = result.data as any;
+            localStorage.setItem('accessToken', response.accessToken);
+            localStorage.setItem('refreshToken', response.refreshToken);
+            localStorage.setItem('user', JSON.stringify(response.user));
 
-            console.log('Login: Success, redirecting...');
             // Redirect to dashboard
             window.location.href = '/dashboard';
         } catch (err) {
-            console.error('Login: Error:', err);
             setError(err instanceof Error ? err.message : 'Login failed');
         } finally {
             setLoading(false);

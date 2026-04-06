@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import type { Context } from 'hono';
 import { requireAuth, requireRoleLevel } from '../middleware/auth';
 import minioClient, { getPresignedUrl, initMinio } from '../services/minio';
 import { extractMetadata, processImageMetadata } from '../services/metadata';
@@ -8,221 +9,439 @@ import sharp from 'sharp';
 
 const upload = new Hono();
 
-// Initialize MinIO bucket on startup
-// Task 3.1.2.1: Bucket structure configured in minio.ts
-// Task 3.1.2.2: Bucket policies set in minio.ts (private by default)
-// Task 3.1.2.3: Lifecycle rules configured in minio.ts (archive after 2 years)
 initMinio();
 
+const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
+const ML_SERVICE_URL = process.env.ML_SERVICE_URL || 'http://localhost:8000';
+const ML_TIMEOUT = 30000;
+
+type DetectionResult = {
+    label: string;
+    scientific_name: string;
+    score: number;
+};
+
+type BLIPResponse = {
+    caption: string;
+    animal: string;
+    confidence: number;
+    method: string;
+    metadata?: any;
+};
+
+type CameraRow = {
+    id: string;
+    camera_id: string;
+    div_name: string | null;
+    rng_name: string | null;
+    beat_name: string | null;
+    circle_name: string | null;
+};
+
+async function getCameraWithHierarchy(camera_id: string): Promise<CameraRow | undefined> {
+    const isUUID =
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+            camera_id
+        );
+    const query = isUUID
+        ? sql`SELECT c.id, c.camera_id, d.name as div_name, r.name as rng_name, b.name as beat_name, cir.name as circle_name FROM cameras c LEFT JOIN beats b ON c.beat_id = b.id LEFT JOIN ranges r ON b.range_id = r.id LEFT JOIN divisions d ON r.division_id = d.id LEFT JOIN circles cir ON d.circle_id = cir.id WHERE c.id = ${camera_id}`
+        : sql`SELECT c.id, c.camera_id, d.name as div_name, r.name as rng_name, b.name as beat_name, cir.name as circle_name FROM cameras c LEFT JOIN beats b ON c.beat_id = b.id LEFT JOIN ranges r ON b.range_id = r.id LEFT JOIN divisions d ON r.division_id = d.id LEFT JOIN circles cir ON d.circle_id = cir.id WHERE c.camera_id = ${camera_id}`;
+    const [row] = await query;
+    return row as CameraRow | undefined;
+}
+
+function buildObjectName(camera: CameraRow, filename: string): string {
+    const sanitize = (s: string | null | undefined) =>
+        (s ?? '').replace(/[^a-zA-Z0-9]/g, '_') || 'unknown';
+    const date = new Date().toISOString().split('T')[0];
+    const ext = filename.split('.').pop() || 'bin';
+    const uuid = randomUUID();
+    const camKey =
+        camera.camera_id != null && String(camera.camera_id).trim() !== ''
+            ? String(camera.camera_id)
+            : String(camera.id);
+    return `${sanitize(camera.circle_name)}/${sanitize(camera.div_name)}/${sanitize(camera.rng_name)}/${sanitize(camera.beat_name)}/${sanitize(camKey)}/${date}/${uuid}.${ext}`;
+}
+
 /**
- * POST /upload/request - Generate presigned URL for direct upload to MinIO
- * 
- * Task 3.1.2.4: Presigned URL generation
- * Task 3.1.2.5: Create POST /upload/request endpoint
- * Task 3.1.2.6: Validate upload request (camera access, file metadata)
- * Task 3.1.2.7: Generate unique object key with UUID
- * Task 3.1.2.8: Set presigned URL expiry (15 minutes)
- * 
- * @route POST /upload/request
- * @auth RequireAuth, RoleLevel >= 1 (Ground Staff+)
- * @body {filename, file_type, file_size, camera_id}
- * @returns {upload_url, file_path, uuid}
+ * Call the ML service for animal detection (multipart body matches actual image type).
  */
-upload.post('/request', requireAuth, requireRoleLevel(1), async (c) => {
+async function detectAnimal(
+    buffer: Buffer,
+    mimeType = 'image/jpeg'
+): Promise<DetectionResult | null> {
+    try {
+        const boundary = `----${randomUUID().replace(/-/g, '')}`;
+        const safeMime = mimeType && mimeType.startsWith('image/') ? mimeType : 'image/jpeg';
+        const parts: Buffer[] = [];
+
+        parts.push(Buffer.from(`--${boundary}\r\n`));
+        parts.push(
+            Buffer.from(
+                `Content-Disposition: form-data; name="file"; filename="upload"\r\n`
+            )
+        );
+        parts.push(Buffer.from(`Content-Type: ${safeMime}\r\n\r\n`));
+        parts.push(buffer);
+        parts.push(Buffer.from(`\r\n--${boundary}--\r\n`));
+
+        const body = Buffer.concat(parts);
+
+        console.log(
+            `[ML] Sending image (${buffer.length} bytes, ${safeMime}) to: ${ML_SERVICE_URL}/predict`
+        );
+        const response = await fetch(`${ML_SERVICE_URL}/predict`, {
+            method: 'POST',
+            body,
+            headers: {
+                'Content-Type': `multipart/form-data; boundary=${boundary}`,
+            },
+            signal: AbortSignal.timeout(ML_TIMEOUT),
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error(`❌ ML Service error ${response.status}:`, errorText);
+            return null;
+        }
+
+        const responseText = await response.text();
+        let blipResult: BLIPResponse;
+        try {
+            blipResult = JSON.parse(responseText) as BLIPResponse;
+        } catch (e) {
+            console.error(`❌ Failed to parse ML response JSON:`, e);
+            return null;
+        }
+
+        return {
+            label: blipResult.animal,
+            scientific_name: `${blipResult.animal.toLowerCase()}-sp`,
+            score: blipResult.confidence,
+        };
+    } catch (err) {
+        console.error('❌ [ML] Detection fetch failed:', err);
+        return null;
+    }
+}
+
+/**
+ * After bytes are in MinIO: EXIF → ML → thumbnail → DB row (pending_confirmation).
+ */
+async function runMlAndPersist(
+    c: Context,
+    opts: {
+        user: { userId: string };
+        actualCameraId: string;
+        file_path: string;
+        original_filename: string;
+        file_size: number;
+        mime_type: string;
+        buffer: Buffer;
+    }
+) {
+    const {
+        user,
+        actualCameraId,
+        file_path,
+        original_filename,
+        file_size,
+        mime_type,
+        buffer,
+    } = opts;
+
+    const bucketName = process.env.MINIO_BUCKET_NAME || 'wildvision-images';
+
+    let metadata: any = {};
+    try {
+        metadata = await extractMetadata(buffer);
+    } catch (err) {
+        console.warn('[upload] Metadata extraction failed (non-fatal):', err);
+    }
+
+    let detection: DetectionResult | null = null;
+    try {
+        detection = await detectAnimal(buffer, mime_type);
+    } catch (err) {
+        console.error('[upload] ML detection failed:', err);
+        throw new Error(`ML service error: ${err}`);
+    }
+
+    if (!detection || !detection.label) {
+        throw new Error(
+            'ML service returned invalid detection. Is the ML service running and healthy?'
+        );
+    }
+
+    let thumbnailPath: string | null = null;
+    try {
+        const thumbnailBuffer = await sharp(buffer)
+            .resize(300)
+            .jpeg({ quality: 80 })
+            .toBuffer();
+        thumbnailPath = `thumbnails/${file_path.replace(/\.[^/.]+$/, '')}.jpg`;
+        await minioClient.putObject(
+            bucketName,
+            thumbnailPath,
+            thumbnailBuffer,
+            thumbnailBuffer.length,
+            { 'Content-Type': 'image/jpeg' }
+        );
+    } catch (err) {
+        console.warn('[upload] Thumbnail generation failed (non-fatal):', err);
+    }
+
+    const detectionConfidence = Math.round(detection.score * 100);
+    const tempMetadata = {
+        taken_at: metadata.date_time_original || null,
+        camera_species_hint: null,
+        ai_prediction: {
+            label: detection.label,
+            scientific_name: detection.scientific_name,
+            confidence: detectionConfidence,
+            model_version: 'blip-v1',
+        },
+    };
+
+    // Auto-approve if confidence >= 90%
+    const isHighConfidence = detectionConfidence >= 90;
+    const confirmationStatus = isHighConfidence ? 'confirmed' : 'pending_confirmation';
+    const confirmedAt = isHighConfidence ? new Date().toISOString() : null;
+    const confirmedBy = isHighConfidence ? 'auto-ml-system' : null;
+    const approvalMethod = isHighConfidence ? 'auto_approved' : null;
+
+    const [image] = await sql`
+        INSERT INTO images (
+            camera_id, file_path, original_filename, file_size, mime_type,
+            taken_at, uploaded_by, metadata, status, thumbnail_path,
+            detected_animal, detected_animal_scientific, detection_confidence,
+            confirmation_status, confirmed_at, confirmed_by, approval_method, auto_approved
+        ) VALUES (
+            ${actualCameraId}, ${file_path}, ${original_filename}, ${file_size}, ${mime_type},
+            ${metadata.date_time_original || null}, ${user.userId},
+            ${sql.json(tempMetadata)}, 'processing', ${thumbnailPath},
+            ${detection.label}, ${detection.scientific_name}, ${detectionConfidence},
+            ${confirmationStatus}, ${confirmedAt}, ${confirmedBy}, ${approvalMethod}, ${isHighConfidence}
+        )
+        RETURNING id, file_path, detected_animal, detection_confidence, thumbnail_path, confirmation_status, confirmed_at
+    `;
+
+    return c.json(
+        {
+            detection: {
+                id: image.id,
+                file_path: image.file_path,
+                thumbnail_path: image.thumbnail_path,
+                detected_animal: image.detected_animal,
+                detected_animal_scientific: detection.scientific_name,
+                confidence: image.detection_confidence,
+                camera_id: actualCameraId,
+                status: image.confirmation_status,
+                autoApproved: isHighConfidence,
+            },
+            message: isHighConfidence 
+                ? `✅ High confidence detection auto-approved (${detectionConfidence}%)`
+                : 'Detection ready for manual confirmation',
+        },
+        201
+    );
+}
+
+/**
+ * POST /upload/direct — Browser → API (multipart) → MinIO → ML → DB.
+ * Avoids presigned URLs, CORS to MinIO, and signature mismatches.
+ */
+upload.post('/direct', requireAuth, requireRoleLevel(1), async (c) => {
     try {
         const user = c.get('user');
+        const body = await c.req.parseBody();
+        const raw = body['file'];
+        const camera_id = body['camera_id'];
+
+        let buffer: Buffer;
+        let original_filename: string;
+        let mime_type: string;
+        let file_size: number;
+
+        if (raw instanceof File) {
+            file_size = raw.size;
+            if (file_size > MAX_UPLOAD_BYTES) {
+                return c.json({ error: 'File exceeds 50MB limit' }, 400);
+            }
+            buffer = Buffer.from(await raw.arrayBuffer());
+            mime_type = raw.type || 'application/octet-stream';
+            original_filename = raw.name || 'upload';
+        } else if (typeof Blob !== 'undefined' && raw instanceof Blob) {
+            file_size = raw.size;
+            if (file_size > MAX_UPLOAD_BYTES) {
+                return c.json({ error: 'File exceeds 50MB limit' }, 400);
+            }
+            buffer = Buffer.from(await raw.arrayBuffer());
+            mime_type = raw.type || 'application/octet-stream';
+            original_filename = 'upload';
+        } else {
+            return c.json({ error: 'Missing file field (multipart form)' }, 400);
+        }
+
+        if (typeof camera_id !== 'string' || !camera_id.trim()) {
+            return c.json({ error: 'Missing camera_id' }, 400);
+        }
+
+        const camera = await getCameraWithHierarchy(camera_id.trim());
+        if (!camera) {
+            return c.json({ error: 'Camera not found' }, 404);
+        }
+
+        const file_path = buildObjectName(camera, original_filename);
+        const bucketName = process.env.MINIO_BUCKET_NAME || 'wildvision-images';
+
+        await minioClient.putObject(
+            bucketName,
+            file_path,
+            buffer,
+            buffer.length,
+            { 'Content-Type': mime_type }
+        );
+        console.log('[upload/direct] Stored in MinIO:', file_path, buffer.length, 'bytes');
+
+        return runMlAndPersist(c, {
+            user,
+            actualCameraId: camera.id,
+            file_path,
+            original_filename,
+            file_size,
+            mime_type,
+            buffer,
+        });
+    } catch (error: any) {
+        console.error('❌ /upload/direct error:', error);
+        return c.json(
+            { error: error.message || 'Upload and detection failed' },
+            500
+        );
+    }
+});
+
+// POST /upload/request - Generate presigned URL (legacy)
+upload.post('/request', requireAuth, requireRoleLevel(1), async (c) => {
+    try {
         const { filename, file_type, file_size, camera_id } = await c.req.json();
 
-        // Task 3.1.2.6: Validate required fields
         if (!filename || !file_type || !file_size || !camera_id) {
             return c.json({ error: 'Missing required fields' }, 400);
         }
 
-        // Task 3.1.2.6: Validate camera exists and user has access
-        // Accept both database UUID and government camera_id string
-        const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(camera_id);
-        const [camera] = await sql`
-            SELECT 
-                c.id, c.camera_id,
-                d.name as div_name, r.name as rng_name, b.name as beat_name,
-                cir.name as circle_name
-            FROM cameras c
-            LEFT JOIN divisions d ON c.division_id = d.id
-            LEFT JOIN ranges r ON c.range_id = r.id
-            LEFT JOIN beats b ON c.beat_id = b.id
-            LEFT JOIN circles cir ON d.circle_id = cir.id
-            WHERE ${isUUID ? sql`c.id = ${camera_id}` : sql`c.camera_id = ${camera_id}`}
-        `;
+        const camera = await getCameraWithHierarchy(camera_id);
         if (!camera) return c.json({ error: 'Camera not found' }, 404);
 
-        // Task 3.1.2.1: Generate folder structure - /circle/division/range/beat/camera-id/yyyy-mm-dd/
-        const sanitize = (s: string) => s?.replace(/[^a-zA-Z0-9]/g, '_') || 'unknown';
-        const circle = sanitize(camera.circle_name);
-        const div = sanitize(camera.div_name);
-        const rng = sanitize(camera.rng_name);
-        const beat = sanitize(camera.beat_name);
-        const cam = sanitize(camera.camera_id);
+        const objectName = buildObjectName(camera, filename);
+        const url = await getPresignedUrl(objectName);
 
-        // Task 3.1.2.7: Generate unique object key with UUID
-        const date = new Date().toISOString().split('T')[0]; // yyyy-mm-dd
-        const ext = filename.split('.').pop();
-        const uuid = randomUUID();
-        const objectName = `${circle}/${div}/${rng}/${beat}/${cam}/${date}/${uuid}.${ext}`;
-
-        // Task 3.1.2.4 & 3.1.2.8: Generate presigned URL with 15-minute expiry
-        const url = await getPresignedUrl(objectName); // Default 900s = 15 minutes
-
-        console.log(`Upload URL requested by user ${user.userId} for camera ${camera.camera_id}: ${objectName}`);
-
-        return c.json({
-            upload_url: url,
-            file_path: objectName,
-            uuid: uuid
-        });
+        console.log(`✅ Upload URL generated: ${objectName}`);
+        return c.json({ upload_url: url, file_path: objectName, uuid: randomUUID() });
     } catch (error) {
-        console.error('Upload request error:', error);
+        console.error('❌ Upload request error:', error);
         return c.json({ error: 'Failed to generate upload URL' }, 500);
     }
 });
 
-/**
- * POST /upload/complete - Finalize upload after client uploads to MinIO
- * 
- * Task 3.1.2.9: Create POST /upload/complete endpoint
- * Task 3.1.2.10: Verify file exists in MinIO after upload
- * Task 3.1.2.11: Create database record for uploaded image
- * 
- * @route POST /upload/complete
- * @auth RequireAuth, RoleLevel >= 1 (Ground Staff+)
- * @body {file_path, camera_id, original_filename, file_size, mime_type}
- * @returns {message, image}
- */
+// POST /upload/complete — After client PUT to MinIO (legacy)
 upload.post('/complete', requireAuth, requireRoleLevel(1), async (c) => {
     try {
         const user = c.get('user');
-        const {
-            file_path,
-            camera_id,
-            original_filename,
-            file_size,
-            mime_type
-        } = await c.req.json();
+        const { file_path, camera_id, original_filename, file_size, mime_type } =
+            await c.req.json();
 
-        // Task 3.1.2.10: Verify file exists in MinIO storage
+        if (!file_path || !camera_id || !original_filename) {
+            return c.json({ error: 'Missing required fields' }, 400);
+        }
+
+        const camera = await getCameraWithHierarchy(camera_id);
+        if (!camera) {
+            return c.json({ error: 'Camera not found' }, 404);
+        }
+        const actualCameraId = camera.id;
+
         const bucketName = process.env.MINIO_BUCKET_NAME || 'wildvision-images';
         try {
             await minioClient.statObject(bucketName, file_path);
-        } catch (err: any) {
-            if (err.code === 'NotFound') {
-                return c.json({ error: 'File not found in storage. Upload may have failed.' }, 404);
-            }
-            throw err;
+        } catch {
+            return c.json({ error: 'File not found in storage' }, 404);
         }
 
-        // 2. Download file to memory to extract metadata
-        // Warning: For very large files, stream processing is better, but images < 50MB are fine in memory for now
-        const dataStream = await minioClient.getObject(bucketName, file_path);
-        const chunks: Buffer[] = [];
-        for await (const chunk of dataStream) {
-            chunks.push(chunk as Buffer);
-        }
-        const buffer = Buffer.concat(chunks);
-
-        // 3. Quick EXIF extraction — used only to capture taken_at timestamp
-        //    before the DB insert. Full metadata processing (Tasks 3.1.3.3–3.1.3.10)
-        //    is performed asynchronously via processImageMetadata() below.
-        const metadata = await extractMetadata(buffer);
-        console.log('[upload] Quick EXIF extraction done:', {
-            taken_at: metadata.date_time_original ?? null,
-            has_gps: metadata.gps_latitude != null,
-            serial: metadata.serial_number ?? null,
-        });
-
-        // --- AI STUB START ---
-        // TODO: Replace with actual YOLOv8 inference (Module 4 - Task 4.1.1)
-        // Simulate species detection for development/testing
-        const speciesList = ['Tiger', 'Elephant', 'Leopard', 'Deer', 'Wild Boar', 'Bear', 'Unknown'];
-        const detectedSpecies = speciesList[Math.floor(Math.random() * speciesList.length)];
-        const confidence = Math.floor(Math.random() * (100 - 60) + 60); // Random 60-100%
-
-        // Auto-verify if confidence > 90% (Task 4.1.2.4)
-        const isAutoVerified = confidence > 90;
-        const reviewStatus = isAutoVerified ? 'verified' : 'pending';
-
-        // Enrich metadata
-        (metadata as any).ai_prediction = {
-            species: detectedSpecies,
-            confidence: confidence,
-            model_version: 'v1.0.0-stub'
-        };
-        if (isAutoVerified) {
-            (metadata as any).auto_verified = true;
-        }
-        // --- AI STUB END ---
-
-        // 4. Generate Thumbnail (parallel to main image storage)
-        let thumbnailPath = null;
+        let buffer: Buffer;
         try {
-            const thumbnailBuffer = await sharp(buffer)
-                .resize(300) // Width 300px, auto height
-                .jpeg({ quality: 80 })
-                .toBuffer();
-
-            // Create thumbnail path: thumbnails/original_path_structure
-            // Follows same hierarchy as main images for organization
-            thumbnailPath = `thumbnails/${file_path.replace(/\.[^/.]+$/, "")}.jpg`;
-
-            await minioClient.putObject(
-                bucketName,
-                thumbnailPath,
-                thumbnailBuffer,
-                thumbnailBuffer.length,
-                { 'Content-Type': 'image/jpeg' }
-            );
-            console.log('Thumbnail generated:', thumbnailPath);
-        } catch (thumbError) {
-            console.error('Thumbnail generation failed:', thumbError);
-            // Don't fail the whole upload, just log it
+            const dataStream = await minioClient.getObject(bucketName, file_path);
+            const chunks: Buffer[] = [];
+            for await (const chunk of dataStream) {
+                chunks.push(chunk as Buffer);
+            }
+            buffer = Buffer.concat(chunks);
+        } catch (err) {
+            console.error('Failed to download from MinIO:', err);
+            return c.json({ error: 'Failed to download file' }, 500);
         }
 
-        // 5. Create DB Record (Task 3.1.2.11)
-        //    metadata_status defaults to 'pending'; processImageMetadata() will
-        //    set it to 'completed' (or 'failed') after async processing.
-        const aiMetaStub: Record<string, unknown> = {
-            ai_prediction: (metadata as Record<string, unknown>).ai_prediction,
-            auto_verified:  (metadata as Record<string, unknown>).auto_verified ?? false,
-        };
-
-        const [image] = await sql`
-            INSERT INTO images (
-                camera_id, file_path, original_filename, file_size, mime_type,
-                taken_at, uploaded_by, metadata, status,
-                thumbnail_path, ai_confidence, review_status,
-                metadata_status
-            ) VALUES (
-                ${camera_id}, ${file_path}, ${original_filename}, ${file_size}, ${mime_type},
-                ${metadata.date_time_original || null}, ${user.userId},
-                ${sql.json(aiMetaStub as any)}, 'processed',
-                ${thumbnailPath}, ${confidence}, ${reviewStatus},
-                'pending'
-            )
-            RETURNING *
-        `;
-
-        console.log(`✅ Image upload completed: ${file_path} (confidence: ${confidence}%, status: ${reviewStatus})`);
-
-        // 6. Async full metadata pipeline — Task 3.1.3
-        //    Fire-and-forget: the HTTP response is returned immediately.
-        //    The background worker (metadata-worker.ts) will retry any failures.
-        processImageMetadata(image.id as string, buffer).catch((err) => {
-            console.warn(`[upload] Background metadata processing failed for ${image.id as string}:`, err);
+        return runMlAndPersist(c, {
+            user,
+            actualCameraId,
+            file_path,
+            original_filename,
+            file_size: file_size ?? buffer.length,
+            mime_type: mime_type || 'application/octet-stream',
+            buffer,
         });
+    } catch (error: any) {
+        console.error('❌ Upload complete error:', error);
+        return c.json({ error: error.message || 'Failed to process upload' }, 500);
+    }
+});
 
-        return c.json({ message: 'Upload completed and processed', image }, 201);
+upload.post('/confirm', requireAuth, requireRoleLevel(1), async (c) => {
+    try {
+        const user = c.get('user');
+        const { image_id, confirmed, detected_animal } = await c.req.json();
 
-    } catch (error) {
-        console.error('Upload complete error:', error);
-        return c.json({ error: 'Failed to complete upload' }, 500);
+        if (!image_id) {
+            return c.json({ error: 'Missing image_id' }, 400);
+        }
+
+        if (confirmed) {
+            await sql`
+                UPDATE images
+                SET 
+                    confirmation_status = 'confirmed',
+                    confirmed_at = ${new Date()},
+                    confirmed_by = ${user.userId},
+                    status = 'processed',
+                    detected_animal = ${detected_animal?.trim() || null}
+                WHERE id = ${image_id}
+            `;
+            console.log('[confirm] Detection confirmed:', image_id, 'Animal:', detected_animal);
+
+            processImageMetadata(image_id, Buffer.from('')).catch((err) => {
+                console.warn('[upload] Background processing failed:', err);
+            });
+
+            return c.json({
+                message: 'Detection confirmed and saved',
+                image_id: image_id,
+                status: 'confirmed',
+                detected_animal: detected_animal || 'confirmed with original',
+            });
+        } else {
+            await sql`DELETE FROM images WHERE id = ${image_id}`;
+            console.log('[confirm] Detection rejected:', image_id);
+
+            return c.json({
+                message: 'Detection rejected',
+                image_id: image_id,
+                status: 'rejected',
+            });
+        }
+    } catch (error: any) {
+        console.error('❌ Confirmation error:', error);
+        return c.json({ error: error.message || 'Failed to confirm detection' }, 500);
     }
 });
 

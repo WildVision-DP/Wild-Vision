@@ -1,5 +1,5 @@
 import sql from './connection';
-import { readFileSync } from 'fs';
+import { readFileSync, readdirSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
@@ -23,10 +23,10 @@ export async function runMigration(migrationFile: string) {
 }
 
 export async function runAllMigrations() {
-    const migrations = [
-        '001_create_users_roles.sql',
-        '002_create_forest_hierarchy.sql',
-    ];
+    const migrationDir = join(__dirname, '../../../../infra/db/migrations');
+    const migrations = readdirSync(migrationDir)
+        .filter(f => f.endsWith('.sql'))
+        .sort((a, b) => a.localeCompare(b));
 
     for (const migration of migrations) {
         const success = await runMigration(migration);

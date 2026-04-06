@@ -7,8 +7,17 @@ import cameraRoutes from './routes/cameras';
 import geographyRoutes from './routes/geography';
 import userRoutes from './routes/users';
 import brandRoutes from './routes/brands';
+import uploadRoutes from './routes/upload';
+import adminRoutes from './routes/admin';
+import { initializeDatabase } from './db/init-db';
 
 const app = new Hono();
+
+// Initialize database on startup
+console.log('📊 Initializing database...');
+await initializeDatabase().catch(e => {
+    console.error('⚠️  Database initialization error (continuing):', e);
+});
 
 // Middleware
 app.use('*', cors());
@@ -46,20 +55,22 @@ app.route('/geography', geographyRoutes);
 app.route('/users', userRoutes);
 
 // Brand routes
-// Brand routes
 app.route('/brands', brandRoutes);
 
 // Upload routes
-import uploadRoutes from './routes/upload';
 app.route('/upload', uploadRoutes);
 
 // Image routes
 import imageRoutes from './routes/images';
 app.route('/images', imageRoutes);
 
+// Admin review routes
+app.route('/admin', adminRoutes);
+
 // Proxy routes (serve images from MinIO)
 import proxyRoutes from './routes/proxy';
 app.route('/proxy', proxyRoutes);
+app.route('/image', proxyRoutes);
 
 // ─── Background Workers ────────────────────────────────────────────────────────
 // Task 3.1.3.11: Start the metadata background worker.

@@ -45,7 +45,19 @@ services:
       interval: 30s
       timeout: 20s
       retries: 3
-
+  # Python ML Service
+  ml-service:
+    image: python:3.10-slim
+    container_name: wildvision-ml
+    restart: unless-stopped
+    working_dir: /app
+    volumes:
+      - ../../apps/ml-service:/app
+    command: bash -c "pip install --no-cache-dir -r ml_requirements.txt && uvicorn ml_service:app --host 0.0.0.0 --port 8000"
+    ports:
+      - "8000:8000"
+    networks:
+      - wildvision-network
 volumes:
   postgres_data:
     driver: local

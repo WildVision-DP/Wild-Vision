@@ -7,6 +7,8 @@ import UploadPage from './pages/UploadPage';
 import GeographyPage from './pages/GeographyPage';
 import WildlifeMapPage from './pages/WildlifeMapPage';
 import MapTestPage from './pages/MapTestPage';
+import AnimalActivityLog from './pages/AnimalActivityLog';
+import AdminReviewPage from './pages/AdminReviewPage';
 import ProtectedRoute from './components/ProtectedRoute';
 import Layout from './components/Layout';
 import ErrorBoundary from './components/ErrorBoundary';
@@ -25,12 +27,14 @@ function App() {
                     <Route path="/cameras" element={<CamerasPage />} />
                     <Route path="/users" element={<UsersPage />} />
                     <Route path="/upload" element={<UploadPage />} />
+                    <Route path="/admin/review" element={<AdminReviewPage />} />
                     <Route path="/geography" element={
                         <ErrorBoundary>
                             <GeographyPage />
                         </ErrorBoundary>
                     } />
                     <Route path="/map" element={<WildlifeMapPage />} />
+                    <Route path="/activity-log" element={<AnimalActivityLog />} />
                 </Route>
 
                 {/* Default redirects */}

@@ -34,7 +34,7 @@ export async function requireAuth(c: Context, next: Next) {
     // Get full user info from database
     const [user] = await sql`
     SELECT u.id, u.email, u.full_name, u.is_active, u.role_id,
-           r.name as role_name, r.level as role_level
+           r.name as role_name
     FROM users u
     JOIN roles r ON u.role_id = r.id
     WHERE u.id = ${payload.userId} AND u.deleted_at IS NULL

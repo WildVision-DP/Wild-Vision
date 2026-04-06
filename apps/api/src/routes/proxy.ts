@@ -6,11 +6,18 @@ const proxy = new Hono();
 
 const BUCKET_NAME = process.env.MINIO_BUCKET_NAME || 'wildvision-images';
 
-// GET /proxy?key=path/to/image.jpg - Proxy images from MinIO
-proxy.get('/', async (c) => {
+// GET /proxy?key=path/to/image.jpg or /image/path/to/image.jpg - Proxy images from MinIO
+proxy.get('/*', async (c) => {
     try {
-        const key = c.req.query('key');
-        
+        let key = c.req.path.replace(/^\/proxy\//, '').replace(/^\/image\//, '');
+        if (!key || key === '/') {
+            key = c.req.query('key') || '';
+        }
+
+        if (key.startsWith('/')) {
+            key = key.substring(1);
+        }
+
         if (!key) {
             return c.json({ error: 'Missing key parameter' }, 400);
         }

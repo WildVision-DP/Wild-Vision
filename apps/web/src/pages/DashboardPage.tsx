@@ -1,15 +1,37 @@
 import { useState, useEffect } from 'react';
-import { Camera, MapPin } from 'lucide-react';
+import { Camera, MapPin, AlertCircle, Filter, ChevronUp, ChevronDown, Grid3X3, BarChart3 } from 'lucide-react';
 import MapComponent from '../components/MapComponent';
 import CameraGallery from '@/components/CameraGallery';
+import AdvancedDashboard from '@/components/AdvancedDashboard';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Card } from '@/components/ui/card';
 
 export default function DashboardPage() {
     const [cameraStats, setCameraStats] = useState({ active: 0, inactive: 0, maintenance: 0, total: 0 });
     const [geographyStats, setGeographyStats] = useState({ divisions: 0, ranges: 0, beats: 0 });
     const [cameras, setCameras] = useState<any[]>([]);
+    const [confirmedDetections, setConfirmedDetections] = useState<any[]>([]);
+    const [detectionStats, setDetectionStats] = useState({
+        autoApproved: 0,
+        manualApproved: 0,
+        pendingReview: 0
+    });
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [viewGalleryId, setViewGalleryId] = useState<string | null>(null);
+    const [viewMode, setViewMode] = useState<'overview' | 'advanced'>('overview');
+    
+    // Filtering & Sorting state
+    const [animalFilter, setAnimalFilter] = useState('');
+    const [statusFilter, setStatusFilter] = useState<string>('all');
+    const [dateMin, setDateMin] = useState('');
+    const [dateMax, setDateMax] = useState('');
+    const [confidenceMin, setConfidenceMin] = useState(0);
+    const [confidenceMax, setConfidenceMax] = useState(100);
+    const [sortBy, setSortBy] = useState<'latest' | 'oldest' | 'confidence_high' | 'name_asc'>('latest');
+    const [filterOpen, setFilterOpen] = useState(false);
+    
     const user = JSON.parse(localStorage.getItem('user') || '{}');
 
     useEffect(() => {
@@ -21,7 +43,7 @@ export default function DashboardPage() {
         };
         window.addEventListener('open-camera-gallery', handleOpenGallery);
         return () => window.removeEventListener('open-camera-gallery', handleOpenGallery);
-    }, []);
+    }, [animalFilter, statusFilter, dateMin, dateMax, confidenceMin, confidenceMax, sortBy]);
 
     const fetchDashboardData = async () => {
         try {
@@ -37,18 +59,20 @@ export default function DashboardPage() {
             const headers = { 'Authorization': `Bearer ${token}` };
             console.log('Dashboard: Making API calls...');
 
-            const [camerasRes, divisionsRes, rangesRes, beatsRes] = await Promise.all([
+            const [camerasRes, divisionsRes, rangesRes, beatsRes, detectionsRes] = await Promise.all([
                 fetch('/api/cameras', { headers }),
                 fetch('/api/geography/divisions', { headers }),
                 fetch('/api/geography/ranges', { headers }),
-                fetch('/api/geography/beats', { headers })
+                fetch('/api/geography/beats', { headers }),
+                fetch('/api/images?confirmation_status=confirmed&limit=10&sort=confirmed_at', { headers })
             ]);
 
             console.log('Dashboard: API responses:', {
                 cameras: camerasRes.status,
                 divisions: divisionsRes.status,
                 ranges: rangesRes.status,
-                beats: beatsRes.status
+                beats: beatsRes.status,
+                detections: detectionsRes.status
             });
 
             // Check for auth failure
@@ -94,6 +118,26 @@ export default function DashboardPage() {
                 });
             } else {
                 console.error('Dashboard: Failed to fetch geography data');
+            }
+
+            // Fetch detections with stats
+            if (detectionsRes.ok) {
+                const detectionsData = await detectionsRes.json();
+                console.log('Dashboard: Confirmed detections loaded:', detectionsData.images?.length || 0);
+                const detections = detectionsData.images || [];
+                setConfirmedDetections(detections);
+                
+                // Calculate detection stats
+                const stats = {
+                    autoApproved: detections.filter((d: any) => d.auto_approved === true).length,
+                    manualApproved: detections.filter((d: any) => d.detection_status === 'manual_approved').length,
+                    pendingReview: detections.filter((d: any) => d.detection_status === 'pending_review').length
+                };
+                setDetectionStats(stats);
+            } else {
+                console.warn('Dashboard: Failed to fetch detections');
+                setConfirmedDetections([]);
+                setDetectionStats({ autoApproved: 0, manualApproved: 0, pendingReview: 0 });
             }
         } catch (error) {
             console.error('Dashboard: Failed to fetch data:', error);
@@ -149,7 +193,39 @@ export default function DashboardPage() {
                 <p className="text-gray-500">Welcome back, {user.fullName}</p>
             </div>
 
-            {/* Camera Statistics - Single Block with White Background */}
+            {/* View Mode Tabs */}
+            <div className="mb-6 flex gap-2 border-b border-gray-200">
+                <button
+                    onClick={() => setViewMode('overview')}
+                    className={`flex items-center gap-2 px-4 py-3 font-medium transition ${
+                        viewMode === 'overview'
+                            ? 'text-green-700 border-b-2 border-green-700'
+                            : 'text-gray-600 hover:text-gray-800'
+                    }`}
+                >
+                    <Grid3X3 size={20} />
+                    Overview
+                </button>
+                <button
+                    onClick={() => setViewMode('advanced')}
+                    className={`flex items-center gap-2 px-4 py-3 font-medium transition ${
+                        viewMode === 'advanced'
+                            ? 'text-green-700 border-b-2 border-green-700'
+                            : 'text-gray-600 hover:text-gray-800'
+                    }`}
+                >
+                    <BarChart3 size={20} />
+                    Advanced Analytics
+                </button>
+            </div>
+
+            {/* Advanced Dashboard View */}
+            {viewMode === 'advanced' && <AdvancedDashboard />}
+
+            {/* Overview View */}
+            {viewMode === 'overview' && (
+            <>
+
             <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-shadow duration-300 mb-6">
                 <div className="flex items-center gap-3 mb-6">
                     <div className="p-2 bg-green-100 rounded-lg">
@@ -262,6 +338,213 @@ export default function DashboardPage() {
                 </div>
             </div>
 
+            {/* Recent Confirmed Detections with Advanced Filtering */}
+            {confirmedDetections.length > 0 && (
+                <div className="mt-8 bg-white p-6 rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-shadow duration-300">
+                    <div className="flex items-center justify-between mb-6">
+                        <div className="flex items-center gap-3">
+                            <div className="p-2 bg-orange-100 rounded-lg">
+                                <AlertCircle className="w-8 h-8 text-orange-700" />
+                            </div>
+                            <h3 className="text-xl font-semibold text-gray-800">Animal Detections (Approved)</h3>
+                        </div>
+                        <Button 
+                            variant="outline" 
+                            size="sm"
+                            onClick={() => setFilterOpen(!filterOpen)}
+                            className="flex items-center gap-2"
+                        >
+                            <Filter className="w-4 h-4" />
+                            {filterOpen ? 'Hide' : 'Show'} Filters
+                        </Button>
+                    </div>
+
+                    {/* Detection Status Stats */}
+                    <div className="grid grid-cols-3 gap-4 mb-6">
+                        <Card className="p-4 bg-green-50 border-green-200">
+                            <div className="text-center">
+                                <div className="text-2xl font-bold text-green-700">{detectionStats.autoApproved}</div>
+                                <div className="text-xs text-green-600 mt-1">Auto Approved</div>
+                            </div>
+                        </Card>
+                        <Card className="p-4 bg-blue-50 border-blue-200">
+                            <div className="text-center">
+                                <div className="text-2xl font-bold text-blue-700">{detectionStats.manualApproved}</div>
+                                <div className="text-xs text-blue-600 mt-1">Manual Approved</div>
+                            </div>
+                        </Card>
+                        <Card className="p-4 bg-yellow-50 border-yellow-200">
+                            <div className="text-center">
+                                <div className="text-2xl font-bold text-yellow-700">{detectionStats.pendingReview}</div>
+                                <div className="text-xs text-yellow-600 mt-1">Pending Review</div>
+                            </div>
+                        </Card>
+                    </div>
+
+                    {/* Filter Section */}
+                    {filterOpen && (
+                        <div className="bg-gray-50 p-4 rounded-lg mb-6 border border-gray-200 space-y-4">
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+                                <div>
+                                    <label className="text-xs font-semibold text-gray-700">Animal Type</label>
+                                    <Input
+                                        placeholder="Filter by animal..."
+                                        value={animalFilter}
+                                        onChange={(e) => setAnimalFilter(e.target.value)}
+                                        className="mt-1"
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="text-xs font-semibold text-gray-700">Status</label>
+                                    <select 
+                                        value={statusFilter}
+                                        onChange={(e) => setStatusFilter(e.target.value)}
+                                        className="w-full mt-1 border rounded px-2 py-2 text-sm"
+                                    >
+                                        <option value="all">All Status</option>
+                                        <option value="auto_approved">Auto Approved</option>
+                                        <option value="manual_approved">Manual Approved</option>
+                                        <option value="pending_review">Pending Review</option>
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label className="text-xs font-semibold text-gray-700">Min Confidence</label>
+                                    <Input
+                                        type="number"
+                                        min="0"
+                                        max="100"
+                                        value={confidenceMin}
+                                        onChange={(e) => setConfidenceMin(parseInt(e.target.value) || 0)}
+                                        className="mt-1"
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="text-xs font-semibold text-gray-700">Max Confidence</label>
+                                    <Input
+                                        type="number"
+                                        min="0"
+                                        max="100"
+                                        value={confidenceMax}
+                                        onChange={(e) => setConfidenceMax(parseInt(e.target.value) || 100)}
+                                        className="mt-1"
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="text-xs font-semibold text-gray-700">Sort By</label>
+                                    <select 
+                                        value={sortBy}
+                                        onChange={(e) => setSortBy(e.target.value as any)}
+                                        className="w-full mt-1 border rounded px-2 py-2 text-sm"
+                                    >
+                                        <option value="latest">Latest First</option>
+                                        <option value="oldest">Oldest First</option>
+                                        <option value="confidence_high">Confidence High→Low</option>
+                                        <option value="name_asc">Animal Name (A-Z)</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div className="flex gap-2">
+                                <Button 
+                                    size="sm" 
+                                    variant="outline"
+                                    onClick={() => {
+                                        setAnimalFilter('');
+                                        setStatusFilter('all');
+                                        setConfidenceMin(0);
+                                        setConfidenceMax(100);
+                                        setSortBy('latest');
+                                    }}
+                                >
+                                    Clear Filters
+                                </Button>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Detections Grid */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                        {confirmedDetections
+                            .filter((d) => {
+                                if (animalFilter && !d.detected_animal.toLowerCase().includes(animalFilter.toLowerCase())) return false;
+                                if (statusFilter !== 'all' && d.detection_status !== statusFilter) return false;
+                                const conf = Math.round((d.detection_confidence || 0) * 100);
+                                if (conf < confidenceMin || conf > confidenceMax) return false;
+                                return true;
+                            })
+                            .sort((a, b) => {
+                                switch (sortBy) {
+                                    case 'latest':
+                                        return new Date(b.confirmed_at || 0).getTime() - new Date(a.confirmed_at || 0).getTime();
+                                    case 'oldest':
+                                        return new Date(a.confirmed_at || 0).getTime() - new Date(b.confirmed_at || 0).getTime();
+                                    case 'confidence_high':
+                                        return (b.detection_confidence || 0) - (a.detection_confidence || 0);
+                                    case 'name_asc':
+                                        return (a.detected_animal || '').localeCompare(b.detected_animal || '');
+                                    default:
+                                        return 0;
+                                }
+                            })
+                            .map((detection) => (
+                                <div key={detection.id} className="bg-gray-50 border border-gray-200 rounded-lg overflow-hidden hover:shadow-md transition-shadow duration-200">
+                                    {/* Thumbnail */}
+                                    <div className="relative w-full h-48 bg-gray-200">
+                                        {detection.thumbnail_path ? (
+                                            <img
+                                                src={`/api/image/${detection.thumbnail_path}`}
+                                                alt={detection.detected_animal}
+                                                className="w-full h-full object-cover"
+                                                onError={(e) => {
+                                                    (e.target as HTMLImageElement).src = 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22400%22 height=%22300%22%3E%3Crect fill=%22%23e0e0e0%22 width=%22400%22 height=%22300%22/%3E%3Ctext x=%2250%25%22 y=%2250%25%22 text-anchor=%22middle%22 dy=%22.3em%22 fill=%22%23666%22%3ENo image%3C/text%3E%3C/svg%3E';
+                                                }}
+                                            />
+                                        ) : (
+                                            <div className="flex items-center justify-center h-full text-gray-500">
+                                                No thumbnail
+                                            </div>
+                                        )}
+                                        {/* Status Badge */}
+                                        <div className={`absolute top-2 left-2 px-2 py-1 rounded text-white text-xs font-semibold ${
+                                            detection.auto_approved ? 'bg-green-600' :
+                                            detection.detection_status === 'manual_approved' ? 'bg-blue-600' :
+                                            'bg-yellow-600'
+                                        }`}>
+                                            {detection.auto_approved ? '✓ Auto' : detection.detection_status === 'manual_approved' ? '✓ Verified' : '⏳ Pending'}
+                                        </div>
+                                        {/* Confidence Badge */}
+                                        {detection.detection_confidence && (
+                                            <div className={`absolute top-2 right-2 px-2 py-1 rounded text-white text-xs font-semibold ${
+                                                detection.detection_confidence >= 0.8 ? 'bg-green-600' :
+                                                detection.detection_confidence >= 0.6 ? 'bg-yellow-600' : 'bg-red-600'
+                                            }`}>
+                                                {Math.round(detection.detection_confidence * 100)}%
+                                            </div>
+                                        )}
+                                    </div>
+                                    {/* Details */}
+                                    <div className="p-4">
+                                        <h4 className="font-semibold text-lg text-green-700">{detection.detected_animal}</h4>
+                                        <p className="text-xs text-gray-600 italic">{detection.detected_animal_scientific}</p>
+                                        {detection.beat_name && <p className="text-xs text-gray-500 mt-2">📍 {detection.beat_name}</p>}
+                                        <div className="mt-2 text-xs text-gray-500">
+                                            {detection.confirmed_at && (
+                                                <div>
+                                                    ✓ {new Date(detection.confirmed_at).toLocaleDateString()}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                    </div>
+                </div>
+            )}
+
             {/* Camera Map */}
             <div className="mt-8 bg-white p-6 rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-shadow duration-300">
                 <div className="flex items-center gap-3 mb-6">
@@ -282,6 +565,8 @@ export default function DashboardPage() {
                 isOpen={!!viewGalleryId}
                 onClose={() => setViewGalleryId(null)}
             />
+            </>
+            )}
         </div>
     );
 }

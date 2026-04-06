@@ -1,6 +1,6 @@
 import { Outlet, NavLink } from 'react-router-dom';
 import { cn } from '@/lib/utils';
-import { LogOut, Map, LayoutDashboard, User, MapPin, Shield, Upload } from 'lucide-react';
+import { LogOut, Map, LayoutDashboard, User, MapPin, Shield, Upload, File } from 'lucide-react';
 
 export default function Layout() {
     const user = JSON.parse(localStorage.getItem('user') || '{}');
@@ -149,6 +149,32 @@ export default function Layout() {
                         >
                             <Upload className="h-5 w-5" />
                             <span>Upload Data</span>
+                        </NavLink>
+
+                        <NavLink
+                            to="/map"
+                            className={({ isActive }) => cn(
+                                "flex items-center space-x-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors",
+                                isActive
+                                    ? "bg-green-50 text-green-700 border border-green-200"
+                                    : "text-gray-600 hover:bg-white hover:text-gray-900 hover:shadow-sm"
+                            )}
+                        >
+                            <Map size={20} />
+                            <span>Wildlife Map</span>
+                        </NavLink>
+
+                        <NavLink
+                            to="/activity-log"
+                            className={({ isActive }) => cn(
+                                "flex items-center space-x-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors",
+                                isActive
+                                    ? "bg-green-50 text-green-700 border border-green-200"
+                                    : "text-gray-600 hover:bg-white hover:text-gray-900 hover:shadow-sm"
+                            )}
+                        >
+                            <File size={20} />
+                            <span>Activity Log</span>
                         </NavLink>
                     </nav>
 
