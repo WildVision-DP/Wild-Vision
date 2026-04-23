@@ -12,7 +12,7 @@ const upload = new Hono();
 initMinio();
 
 const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
-const ML_SERVICE_URL = process.env.ML_SERVICE_URL || 'http://localhost:8000';
+const ML_SERVICE_URL = process.env.ML_SERVICE_URL || 'http://127.0.0.1:8000';
 const ML_TIMEOUT = 30000;
 
 type DetectionResult = {
@@ -152,15 +152,20 @@ async function runMlAndPersist(
     try {
         detection = await detectAnimal(buffer, mime_type);
     } catch (err) {
-        console.error('[upload] ML detection failed:', err);
-        throw new Error(`ML service error: ${err}`);
+        console.error('[upload] ML detection failed, falling back to manual review:', err);
     }
 
-    if (!detection || !detection.label) {
-        throw new Error(
-            'ML service returned invalid detection. Is the ML service running and healthy?'
-        );
-    }
+    const hasValidDetection =
+        detection != null &&
+        typeof detection.label === 'string' &&
+        detection.label.trim() !== '';
+    const resolvedDetection: DetectionResult = hasValidDetection
+        ? detection!
+        : {
+              label: 'Unknown',
+              scientific_name: 'unknown',
+              score: 0,
+          };
 
     let thumbnailPath: string | null = null;
     try {
@@ -180,20 +185,21 @@ async function runMlAndPersist(
         console.warn('[upload] Thumbnail generation failed (non-fatal):', err);
     }
 
-    const detectionConfidence = Math.round(detection.score * 100);
+    const detectionConfidence = Math.round(resolvedDetection.score * 100);
     const tempMetadata = {
         taken_at: metadata.date_time_original || null,
         camera_species_hint: null,
         ai_prediction: {
-            label: detection.label,
-            scientific_name: detection.scientific_name,
+            label: resolvedDetection.label,
+            scientific_name: resolvedDetection.scientific_name,
             confidence: detectionConfidence,
-            model_version: 'blip-v1',
+            model_version: hasValidDetection ? 'blip-v1' : null,
+            fallback: !hasValidDetection,
         },
     };
 
     // Auto-approve if confidence >= 90%
-    const isHighConfidence = detectionConfidence >= 90;
+    const isHighConfidence = hasValidDetection && detectionConfidence >= 90;
     const confirmationStatus = isHighConfidence ? 'confirmed' : 'pending_confirmation';
     const confirmedAt = isHighConfidence ? new Date().toISOString() : null;
     const confirmedBy = null; // System approvals have null confirmed_by; use auto_approved flag instead
@@ -209,7 +215,7 @@ async function runMlAndPersist(
             ${actualCameraId}, ${file_path}, ${original_filename}, ${file_size}, ${mime_type},
             ${metadata.date_time_original || null}, ${user.userId},
             ${sql.json(tempMetadata)}, 'processing', ${thumbnailPath},
-            ${detection.label}, ${detection.scientific_name}, ${detectionConfidence},
+            ${resolvedDetection.label}, ${resolvedDetection.scientific_name}, ${detectionConfidence},
             ${confirmationStatus}, ${confirmedAt}, ${confirmedBy}, ${approvalMethod}, ${isHighConfidence}
         )
         RETURNING id, file_path, detected_animal, detection_confidence, thumbnail_path, confirmation_status, confirmed_at
@@ -222,7 +228,7 @@ async function runMlAndPersist(
                 file_path: image.file_path,
                 thumbnail_path: image.thumbnail_path,
                 detected_animal: image.detected_animal,
-                detected_animal_scientific: detection.scientific_name,
+                detected_animal_scientific: resolvedDetection.scientific_name,
                 confidence: image.detection_confidence,
                 camera_id: actualCameraId,
                 status: image.confirmation_status,
@@ -230,7 +236,9 @@ async function runMlAndPersist(
             },
             message: isHighConfidence 
                 ? `✅ High confidence detection auto-approved (${detectionConfidence}%)`
-                : 'Detection ready for manual confirmation',
+                : hasValidDetection
+                    ? 'Detection ready for manual confirmation'
+                    : 'Upload completed, but ML detection is unavailable. Review is required.',
         },
         201
     );

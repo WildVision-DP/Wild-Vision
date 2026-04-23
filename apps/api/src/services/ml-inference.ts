@@ -3,7 +3,7 @@
  * Calls the Python ML microservice to identify animals in images with confidence scoring
  */
 
-const ML_SERVICE_URL = process.env.ML_SERVICE_URL || 'http://localhost:8000';
+const ML_SERVICE_URL = process.env.ML_SERVICE_URL || 'http://127.0.0.1:8000';
 console.log(`ML Service URL: ${ML_SERVICE_URL}`);
 
 interface MlPrediction {
