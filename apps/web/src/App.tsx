@@ -9,6 +9,7 @@ import WildlifeMapPage from './pages/WildlifeMapPage';
 import MapTestPage from './pages/MapTestPage';
 import AnimalActivityLog from './pages/AnimalActivityLog';
 import AdminReviewPage from './pages/AdminReviewPage';
+import AnalyticsPage from './pages/AnalyticsPage';
 import ProtectedRoute from './components/ProtectedRoute';
 import Layout from './components/Layout';
 import ErrorBoundary from './components/ErrorBoundary';
@@ -35,6 +36,7 @@ function App() {
                     } />
                     <Route path="/map" element={<WildlifeMapPage />} />
                     <Route path="/activity-log" element={<AnimalActivityLog />} />
+                    <Route path="/analytics" element={<AnalyticsPage />} />
                 </Route>
 
                 {/* Default redirects */}

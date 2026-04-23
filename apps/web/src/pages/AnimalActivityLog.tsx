@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { AlertCircle, Calendar, MapPin, Camera, Loader, Upload, MoreVertical, CheckCircle, Edit3 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import Modal from '@/components/ui/Modal';
 import { useNavigate } from 'react-router-dom';
 
 interface AnimalDetection {
@@ -39,7 +38,8 @@ export default function AnimalActivityLog() {
     const [approveError, setApproveError] = useState<string | null>(null);
     const [openMenuId, setOpenMenuId] = useState<string | null>(null);
     const [editingId, setEditingId] = useState<string | null>(null);
-    const [editingAnimalName, setEditingAnimalName] = useState<string>('');
+    const [editedAnimalName, setEditedAnimalName] = useState('');
+    const [isSavingEdit, setIsSavingEdit] = useState(false);
 
     useEffect(() => {
         fetchDetections();
@@ -81,7 +81,7 @@ export default function AnimalActivityLog() {
             const pendingData = await pendingResponse.json();
             
             const confirmed = Array.isArray(confirmedData) ? confirmedData : confirmedData.data || [];
-            const pending = (Array.isArray(pendingData) ? pendingData : pendingData.data || []).map(d => ({
+            const pending = (Array.isArray(pendingData) ? pendingData : pendingData.data || []).map((d: any) => ({
                 ...d,
                 confirmation_status: 'pending_confirmation'
             }));
@@ -98,51 +98,6 @@ export default function AnimalActivityLog() {
         }
     };
 
-    const handleSaveEdit = async () => {
-        if (!editingId || !editingAnimalName.trim()) return;
-        
-        try {
-            setApprovingId(editingId);
-            setApproveError(null);
-
-            const token = localStorage.getItem('accessToken');
-            if (!token) return;
-
-            const response = await fetch(`/api/upload/confirm`, {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ 
-                    image_id: editingId,
-                    confirmed: true,
-                    detected_animal: editingAnimalName
-                })
-            });
-
-            if (!response.ok) throw new Error('Failed to update detection');
-
-            // Success - update local state
-            setPendingDetections(prev => prev.filter(d => d.id !== editingId));
-            setDetections(prev => {
-                const existing = [...prev, ...pendingDetections].find(d => d.id === editingId);
-                const prevFiltered = prev.filter(d => d.id !== editingId);
-                if (existing) {
-                    return [{ ...existing, detected_animal: editingAnimalName, confirmation_status: 'confirmed', confirmed_at: new Date().toISOString() }, ...prevFiltered];
-                }
-                return prevFiltered;
-            });
-
-            setEditingId(null);
-            setEditingAnimalName('');
-        } catch (err: any) {
-            setApproveError(err.message);
-        } finally {
-            setApprovingId(null);
-        }
-    };
-
     const approveDetection = async (detectionId: string, animalName: string) => {
         try {
             setApprovingId(detectionId);
@@ -151,12 +106,13 @@ export default function AnimalActivityLog() {
             const token = localStorage.getItem('accessToken');
             if (!token) {
                 setApproveError('Not logged in');
+                setApprovingId(null);
                 return;
             }
 
-const response = await fetch(`/api/upload/confirm`, {
+            const response = await fetch('/api/upload/confirm', {
                 method: 'POST',
-                headers: {
+                headers: { 
                     'Authorization': `Bearer ${token}`,
                     'Content-Type': 'application/json'
                 },
@@ -166,12 +122,6 @@ const response = await fetch(`/api/upload/confirm`, {
                     detected_animal: animalName
                 })
             });
-
-            if (response.status === 401) {
-                setApproveError('You do not have permission to approve detections.');
-                setApprovingId(null);
-                return;
-            }
 
             if (!response.ok) {
                 const data = await response.json();
@@ -183,7 +133,11 @@ const response = await fetch(`/api/upload/confirm`, {
             setDetections(prev => {
                 const approved = pendingDetections.find(d => d.id === detectionId);
                 if (approved) {
-                    return [...prev, { ...approved, confirmation_status: 'confirmed', confirmed_at: new Date().toISOString() }];
+                    return [...prev, { ...approved, confirmation_status: 'confirmed', confirmed_at: new Date().toISOString(), detected_animal: animalName }];
+                }
+                const existing = prev.find(d => d.id === detectionId);
+                if (existing) {
+                    return prev.map(d => d.id === detectionId ? { ...d, detected_animal: animalName } : d);
                 }
                 return prev;
             });
@@ -192,6 +146,17 @@ const response = await fetch(`/api/upload/confirm`, {
         } catch (err: any) {
             setApproveError(err.message || 'Failed to approve detection');
             setApprovingId(null);
+        }
+    };
+
+    const saveEdit = async () => {
+        if (!editingId || !editedAnimalName.trim()) return;
+        setIsSavingEdit(true);
+        try {
+            await approveDetection(editingId, editedAnimalName);
+            setEditingId(null);
+        } finally {
+            setIsSavingEdit(false);
         }
     };
 
@@ -214,7 +179,7 @@ const response = await fetch(`/api/upload/confirm`, {
     };
 
     const getThumbnailUrl = (path: string) => {
-        return path ? `/api/image/${path}` : '/api/image/placeholder.jpg';
+        return path ? `/api/proxy/${path}` : '/api/proxy/placeholder.jpg';
     };
 
     // Get unique animals for filter
@@ -492,8 +457,8 @@ const response = await fetch(`/api/upload/confirm`, {
                                                         </button>
                                                         <button
                                                             onClick={() => {
+                                                                setEditedAnimalName(detection.detected_animal);
                                                                 setEditingId(detection.id);
-                                                                setEditingAnimalName(detection.detected_animal);
                                                                 setOpenMenuId(null);
                                                             }}
                                                             className="w-full text-left px-4 py-3 hover:bg-blue-50 flex items-center gap-2 transition-colors"
@@ -591,8 +556,8 @@ const response = await fetch(`/api/upload/confirm`, {
                                                 </button>
                                                 <button
                                                     onClick={() => {
+                                                        setEditedAnimalName(detection.detected_animal);
                                                         setEditingId(detection.id);
-                                                        setEditingAnimalName(detection.detected_animal);
                                                     }}
                                                     className="flex-1 px-3 py-2 rounded font-semibold text-white text-sm bg-blue-600 hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
                                                 >
@@ -607,42 +572,55 @@ const response = await fetch(`/api/upload/confirm`, {
                         </div>
                     </>
                 )}
+
+                {/* Edit Modal */}
+                {editingId && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+                        <div className="bg-white rounded-lg shadow-xl max-w-md w-full overflow-hidden">
+                            <div className="p-4 border-b flex justify-between items-center">
+                                <h3 className="text-xl font-bold text-gray-800">Edit Detection</h3>
+                                <button onClick={() => setEditingId(null)} className="text-gray-500 hover:text-gray-800">
+                                    <AlertCircle className="w-5 h-5 opacity-0 cursor-default" /> {/* spacing */}
+                                    <span className="sr-only">Close</span>
+                                ✕
+                                </button>
+                            </div>
+                            <div className="p-6 space-y-4">
+                                <div>
+                                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                                        Detected Animal Name
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={editedAnimalName}
+                                        onChange={(e) => setEditedAnimalName(e.target.value)}
+                                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                                        placeholder="Enter animal name..."
+                                        autoFocus
+                                    />
+                                </div>
+                            </div>
+                            <div className="p-4 bg-gray-50 border-t flex justify-end gap-3">
+                                <button
+                                    onClick={() => setEditingId(null)}
+                                    className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg font-medium transition-colors"
+                                    disabled={isSavingEdit}
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    onClick={saveEdit}
+                                    disabled={!editedAnimalName.trim() || isSavingEdit}
+                                    className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors flex items-center gap-2 disabled:bg-gray-400"
+                                >
+                                    {isSavingEdit && <Loader className="w-4 h-4 animate-spin" />}
+                                    Save & Accept
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
             </div>
-
-            <Modal 
-                title="Edit Detection" 
-                isOpen={!!editingId} 
-                onClose={() => setEditingId(null)}
-            >
-                <div className="space-y-4">
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                            Animal Name
-                        </label>
-                        <input
-                            type="text"
-                            value={editingAnimalName}
-                            onChange={(e) => setEditingAnimalName(e.target.value)}
-                            className="w-full border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 px-3 py-2 border"
-                            placeholder="Enter the correct animal name"
-                            autoFocus
-                        />
-                    </div>
-                    <div className="flex justify-end gap-3 pt-2">
-                        <Button variant="outline" onClick={() => setEditingId(null)}>
-                            Cancel
-                        </Button>
-                        <Button 
-                            className="bg-blue-600 hover:bg-blue-700 text-white" 
-                            onClick={handleSaveEdit}
-                            disabled={!editingAnimalName.trim() || approvingId === editingId}
-                        >
-                            Save Definition
-                        </Button>
-                    </div>
-                </div>
-            </Modal>
-
         </div>
     );
 }

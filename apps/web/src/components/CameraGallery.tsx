@@ -87,21 +87,21 @@ export default function CameraGallery({ cameraId, cameraName, isOpen, onClose }:
                                 <div key={img.id} className="group relative border rounded-lg overflow-hidden bg-white shadow-sm hover:shadow-md transition-shadow">
                                     <div className="aspect-square relative flex items-center justify-center bg-gray-100">
                                         <img
-                                            src={img.thumbnail_path ? `/api/proxy?key=${img.thumbnail_path}` : 'https://placehold.co/300x300?text=No+Preview'}
+                                            src={img.thumbnail_path ? `/api/proxy/${img.thumbnail_path}` : 'https://placehold.co/300x300?text=No+Preview'}
                                             alt="Capture"
                                             className="w-full h-full object-cover transition-transform group-hover:scale-105"
                                             onError={(e) => { (e.target as HTMLImageElement).src = 'https://placehold.co/300x300?text=Error'; }}
                                         />
                                         <div className="absolute top-2 right-2">
-                                            <Badge className={getStatusColor(img.review_status)}>
-                                                {img.review_status}
+                                            <Badge className={getStatusColor(img.confirmation_status)}>
+                                                {img.confirmation_status === 'confirmed' ? 'verified' : img.confirmation_status || 'pending'}
                                             </Badge>
                                         </div>
-                                        {img.metadata?.ai_prediction && (
+                                        {img.detected_animal && (
                                             <div className="absolute bottom-0 left-0 right-0 bg-black/60 text-white p-2 text-xs backdrop-blur-sm">
                                                 <div className="font-semibold flex justify-between">
-                                                    <span>{img.metadata.ai_prediction.species}</span>
-                                                    <span>{img.metadata.ai_prediction.confidence}%</span>
+                                                    <span>{img.detected_animal}</span>
+                                                    {img.detection_confidence && <span>{img.detection_confidence}%</span>}
                                                 </div>
                                             </div>
                                         )}
@@ -109,7 +109,7 @@ export default function CameraGallery({ cameraId, cameraName, isOpen, onClose }:
                                     <div className="p-3 text-xs text-muted-foreground border-t">
                                         <div className="flex items-center gap-1 mb-1">
                                             <Clock className="w-3 h-3" />
-                                            {formatDistanceToNow(new Date(img.taken_at || img.created_at), { addSuffix: true })}
+                                            {formatDistanceToNow(new Date(img.uploaded_at || img.taken_at || Date.now()), { addSuffix: true })}
                                         </div>
                                         <div className="truncate" title={img.uploaded_by_name}>
                                             By: {img.uploaded_by_name || 'Unknown'}

@@ -59,7 +59,7 @@ export default function AdvancedDashboard() {
     const fetchDetections = useCallback(async () => {
         try {
             setLoading(true);
-            const token = localStorage.getItem('token');
+            const token = localStorage.getItem('accessToken');
             const response = await fetch('/api/images?limit=1000&sort=confirmed_at', {
                 headers: {
                     'Authorization': `Bearer ${token}`,

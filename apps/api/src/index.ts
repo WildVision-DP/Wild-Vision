@@ -63,6 +63,7 @@ app.route('/upload', uploadRoutes);
 // Image routes
 import imageRoutes from './routes/images';
 app.route('/images', imageRoutes);
+app.route('/image', imageRoutes); // Support both plural and singular
 
 // Admin review routes
 app.route('/admin', adminRoutes);
@@ -70,7 +71,6 @@ app.route('/admin', adminRoutes);
 // Proxy routes (serve images from MinIO)
 import proxyRoutes from './routes/proxy';
 app.route('/proxy', proxyRoutes);
-app.route('/image', proxyRoutes);
 
 // ─── Background Workers ────────────────────────────────────────────────────────
 // Task 3.1.3.11: Start the metadata background worker.

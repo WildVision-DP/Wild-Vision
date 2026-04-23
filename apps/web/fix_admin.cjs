@@ -1,0 +1,13 @@
+const fs = require('fs');
+let code = fs.readFileSync('apps/web/src/pages/AdminReviewPage.tsx', 'utf8');
+code = code.replace(/confidenceMin = useState\(0\)/, 'confidenceMin = useState(0)');
+code = code.replace(/confidenceMax = useState\(0\.9\)/, 'confidenceMax = useState(90)');
+code = code.replace(/min="0"/g, 'min="0"');
+code = code.replace(/max="1"/g, 'max="100"');
+code = code.replace(/step="0\.05"/g, 'step="5"');
+code = code.replace(/\(item\.avg_confidence \* 100\)/g, 'item.avg_confidence');
+code = code.replace(/detection\.detection_confidence >= 0\.8/g, 'detection.detection_confidence >= 80');
+code = code.replace(/detection\.detection_confidence >= 0\.6/g, 'detection.detection_confidence >= 60');
+code = code.replace(/\(detection\.detection_confidence \* 100\)/g, 'detection.detection_confidence');
+code = code.replace(/\(selectedDetection\.detection_confidence \* 100\)/g, 'selectedDetection.detection_confidence');
+fs.writeFileSync('apps/web/src/pages/AdminReviewPage.tsx', code);

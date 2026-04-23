@@ -500,33 +500,10 @@ export default function UploadPage() {
         setIsCameraOpen(false);
     };
 
-    // Handle rejection of detection - user wants to retake photo
-    const handleDetectionReject = async () => {
-        if (!pendingDetection || !pendingFileId) return;
-
-        try {
-            const token = localStorage.getItem('accessToken');
-            await fetch('/api/upload/confirm', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                body: JSON.stringify({
-                    image_id: pendingDetection.id,
-                    confirmed: false
-                })
-            });
-
-            // Reset UI
-            setPendingDetection(null);
-            setPendingFileId(null);
-            
-            // Reset file status so user can upload again
-            setFiles(prev => prev.map(f => 
-                f.id === pendingFileId ? { ...f, status: 'pending', progress: 0 } : f
-            ));
-            await updateUploadStatus(pendingFileId, { status: 'pending', progress: 0 });
-        } catch (error) {
-            console.error('Rejection error:', error);
-        }
+    // Handle dismissal of auto-approved detection (do NOT delete - image is already saved)
+    const handleDetectionDismiss = () => {
+        setPendingDetection(null);
+        setPendingFileId(null);
     };
 
 
@@ -854,12 +831,8 @@ export default function UploadPage() {
                 isOpen={!!pendingDetection}
                 imageData={pendingDetection}
                 onConfirm={handleDetectionConfirm}
-                onReject={handleDetectionReject}
-                onClose={() => {
-                    setPendingDetection(null);
-                    setUploadedImageUrl(null);
-                    setPendingFileId(null);
-                }}
+                onReject={handleDetectionDismiss}
+                onDismiss={handleDetectionDismiss}
             />
         </div>
     );

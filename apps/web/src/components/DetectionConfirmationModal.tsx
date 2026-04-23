@@ -19,7 +19,7 @@ interface DetectionConfirmationModalProps {
     } | null;
     onConfirm: (editedAnimal?: string) => Promise<void>;
     onReject: () => void;
-    onClose?: () => void;
+    onDismiss?: () => void; // For auto-approved: close without deleting
 }
 
 interface MinIOFileData {
@@ -31,7 +31,7 @@ export default function DetectionConfirmationModal({
     imageData,
     onConfirm,
     onReject,
-    onClose,
+    onDismiss,
 }: DetectionConfirmationModalProps) {
     const [isConfirming, setIsConfirming] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -69,19 +69,21 @@ export default function DetectionConfirmationModal({
     // Auto-approve high confidence and show result  
     const isAutoApproved = imageData.autoApproved || (imageData.confidence >= 0.90);
     
-    // Get thumbnail URL from MinIO
+    // Get thumbnail URL from MinIO via proxy
     const thumbnailUrl = imageData.thumbnail_path
-        ? `/api/image/${imageData.thumbnail_path}`
-        : '/api/image/' + imageData.file_path.replace(/\.[^/.]+$/, '.jpg');
+        ? `/api/proxy/${imageData.thumbnail_path}`
+        : `/api/proxy/${imageData.file_path.replace(/\.[^/.]+$/, '.jpg')}`;
 
     const confidencePercent = Math.round(imageData.confidence * 100);
     const confidenceColor = confidencePercent >= 80 ? 'text-green-600' : 
                           confidencePercent >= 60 ? 'text-yellow-600' : 'text-red-600';
 
-    // Auto-approved UI
+    // Auto-approved UI — use onDismiss to close WITHOUT deleting the record
+    const handleDone = onDismiss ?? onReject;
+
     if (isAutoApproved) {
         return (
-            <Modal isOpen={isOpen} onClose={onReject} title="Detection Complete - Auto Approved">
+            <Modal isOpen={isOpen} onClose={handleDone} title="Detection Complete - Auto Approved">
                 <div className="space-y-4">
                     {/* Success Banner */}
                     <div className="bg-green-50 border border-green-200 rounded-lg p-4 flex items-start gap-3">
@@ -140,9 +142,9 @@ export default function DetectionConfirmationModal({
                         </CardContent>
                     </Card>
 
-                    {/* Action Button */}
+                    {/* Action Button - calls handleDone which does NOT delete the record */}
                     <Button
-                        onClick={onClose || onReject}
+                        onClick={handleDone}
                         className="w-full bg-green-600 hover:bg-green-700"
                     >
                         <CheckCircle className="w-4 h-4 mr-2" />
@@ -155,7 +157,7 @@ export default function DetectionConfirmationModal({
 
     // Low/Medium confidence - Manual review UI
     return (
-        <Modal isOpen={isOpen} onClose={onClose || onReject} title="Confirm Animal Detection for Review">
+        <Modal isOpen={isOpen} onClose={onReject} title="Confirm Animal Detection for Review">
             <div className="space-y-4">
                 {/* Alert for manual review */}
                 <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 flex items-start gap-3">

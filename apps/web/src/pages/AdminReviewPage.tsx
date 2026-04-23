@@ -243,7 +243,7 @@ export default function AdminReviewPage() {
                                 <div className="text-center">
                                     <div className="text-2xl font-bold text-blue-600">{item.count}</div>
                                     <div className="text-xs text-gray-600 mt-1 capitalize">{item.status.replace('_', ' ')}</div>
-                                    <div className="text-xs text-gray-500 mt-1">{(item.avg_confidence * 100).toFixed(0)}% avg</div>
+                                    <div className="text-xs text-gray-500 mt-1">{item.avg_confidence.toFixed(0)}% avg</div>
                                 </div>
                             </CardContent>
                         </Card>
@@ -294,8 +294,8 @@ export default function AdminReviewPage() {
                             <Input
                                 type="number"
                                 min="0"
-                                max="1"
-                                step="0.05"
+                                max="100"
+                                step="5"
                                 value={confidenceMin}
                                 onChange={(e) => {
                                     setConfidenceMin(parseFloat(e.target.value) || 0);
@@ -309,8 +309,8 @@ export default function AdminReviewPage() {
                             <Input
                                 type="number"
                                 min="0"
-                                max="1"
-                                step="0.05"
+                                max="100"
+                                step="5"
                                 value={confidenceMax}
                                 onChange={(e) => {
                                     setConfidenceMax(parseFloat(e.target.value) || 1);
@@ -407,11 +407,11 @@ export default function AdminReviewPage() {
                                                 {/* Confidence Badge */}
                                                 <div className="text-right">
                                                     <div className={`text-xl font-bold ${
-                                                        detection.detection_confidence >= 0.8 ? 'text-green-600' :
-                                                        detection.detection_confidence >= 0.6 ? 'text-yellow-600' :
+                                                        detection.detection_confidence >= 80 ? 'text-green-600' :
+                                                        detection.detection_confidence >= 60 ? 'text-yellow-600' :
                                                         'text-red-600'
                                                     }`}>
-                                                        {(detection.detection_confidence * 100).toFixed(0)}%
+                                                        {detection.detection_confidence.toFixed(0)}%
                                                     </div>
                                                     <div className="text-xs text-gray-600">Confidence</div>
                                                 </div>
@@ -515,7 +515,7 @@ export default function AdminReviewPage() {
                                 </div>
                                 <div>
                                     <div className="text-xs font-semibold text-gray-600">Confidence</div>
-                                    <div className="text-lg font-bold text-blue-600">{(selectedDetection.detection_confidence * 100).toFixed(0)}%</div>
+                                    <div className="text-lg font-bold text-blue-600">{selectedDetection.detection_confidence.toFixed(0)}%</div>
                                 </div>
                                 <div>
                                     <div className="text-xs font-semibold text-gray-600">Camera</div>

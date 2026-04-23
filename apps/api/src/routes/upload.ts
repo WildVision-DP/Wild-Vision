@@ -71,31 +71,20 @@ async function detectAnimal(
     mimeType = 'image/jpeg'
 ): Promise<DetectionResult | null> {
     try {
-        const boundary = `----${randomUUID().replace(/-/g, '')}`;
         const safeMime = mimeType && mimeType.startsWith('image/') ? mimeType : 'image/jpeg';
-        const parts: Buffer[] = [];
-
-        parts.push(Buffer.from(`--${boundary}\r\n`));
-        parts.push(
-            Buffer.from(
-                `Content-Disposition: form-data; name="file"; filename="upload"\r\n`
-            )
-        );
-        parts.push(Buffer.from(`Content-Type: ${safeMime}\r\n\r\n`));
-        parts.push(buffer);
-        parts.push(Buffer.from(`\r\n--${boundary}--\r\n`));
-
-        const body = Buffer.concat(parts);
+        
+        const blob = new Blob([buffer], { type: safeMime });
+        const formData = new FormData();
+        
+        // Ensure Bun knows it's a file by passing an object with name
+        formData.append('file', new File([blob], 'upload.jpg', { type: safeMime }));
 
         console.log(
             `[ML] Sending image (${buffer.length} bytes, ${safeMime}) to: ${ML_SERVICE_URL}/predict`
         );
         const response = await fetch(`${ML_SERVICE_URL}/predict`, {
             method: 'POST',
-            body,
-            headers: {
-                'Content-Type': `multipart/form-data; boundary=${boundary}`,
-            },
+            body: formData,
             signal: AbortSignal.timeout(ML_TIMEOUT),
         });
 
@@ -207,7 +196,7 @@ async function runMlAndPersist(
     const isHighConfidence = detectionConfidence >= 90;
     const confirmationStatus = isHighConfidence ? 'confirmed' : 'pending_confirmation';
     const confirmedAt = isHighConfidence ? new Date().toISOString() : null;
-    const confirmedBy = isHighConfidence ? 'auto-ml-system' : null;
+    const confirmedBy = null; // System approvals have null confirmed_by; use auto_approved flag instead
     const approvalMethod = isHighConfidence ? 'auto_approved' : null;
 
     const [image] = await sql`
@@ -407,16 +396,29 @@ upload.post('/confirm', requireAuth, requireRoleLevel(1), async (c) => {
         }
 
         if (confirmed) {
-            await sql`
-                UPDATE images
-                SET 
-                    confirmation_status = 'confirmed',
-                    confirmed_at = ${new Date()},
-                    confirmed_by = ${user.userId},
-                    status = 'processed',
-                    detected_animal = ${detected_animal?.trim() || null}
-                WHERE id = ${image_id}
-            `;
+            // If a new animal name is provided, update it; otherwise preserve the existing ML-detected name
+            if (detected_animal?.trim()) {
+                await sql`
+                    UPDATE images
+                    SET 
+                        confirmation_status = 'confirmed',
+                        confirmed_at = ${new Date()},
+                        confirmed_by = ${user.userId},
+                        status = 'processed',
+                        detected_animal = ${detected_animal.trim()}
+                    WHERE id = ${image_id}
+                `;
+            } else {
+                await sql`
+                    UPDATE images
+                    SET 
+                        confirmation_status = 'confirmed',
+                        confirmed_at = ${new Date()},
+                        confirmed_by = ${user.userId},
+                        status = 'processed'
+                    WHERE id = ${image_id}
+                `;
+            }
             console.log('[confirm] Detection confirmed:', image_id, 'Animal:', detected_animal);
 
             processImageMetadata(image_id, Buffer.from('')).catch((err) => {

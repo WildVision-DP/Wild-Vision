@@ -496,7 +496,7 @@ export default function DashboardPage() {
                                     <div className="relative w-full h-48 bg-gray-200">
                                         {detection.thumbnail_path ? (
                                             <img
-                                                src={`/api/image/${detection.thumbnail_path}`}
+                                                src={`/api/proxy/${detection.thumbnail_path}`}
                                                 alt={detection.detected_animal}
                                                 className="w-full h-full object-cover"
                                                 onError={(e) => {

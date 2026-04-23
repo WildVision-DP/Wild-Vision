@@ -369,6 +369,11 @@ cameras.get('/:id/analytics', requireAuth, async (c) => {
   try {
     const { id } = c.req.param();
     const { timeframe = '30' } = c.req.query(); // 30 days default
+    const days = Math.max(1, Math.min(365, parseInt(timeframe) || 30));
+
+    // Build cutoff date in JS to avoid INTERVAL interpolation issues
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - days);
 
     // Get camera details
     const [camera] = await sql`
@@ -381,18 +386,18 @@ cameras.get('/:id/analytics', requireAuth, async (c) => {
       return c.json({ error: 'Camera not found' }, 404);
     }
 
-    // Get detection summary for this camera
+    // Get detection summary for this camera — use COALESCE so images without EXIF taken_at are still counted
     const [summary] = await sql`
       SELECT 
         COUNT(*) as total_detections,
         COUNT(CASE WHEN confirmation_status = 'confirmed' THEN 1 END) as confirmed_detections,
         COUNT(CASE WHEN confirmation_status = 'pending_confirmation' THEN 1 END) as pending_detections,
         COUNT(CASE WHEN confirmation_status = 'rejected' THEN 1 END) as rejected_detections,
-        MAX(taken_at) as last_detection,
+        MAX(COALESCE(taken_at, uploaded_at)) as last_detection,
         AVG(CAST(detection_confidence as FLOAT)) as avg_confidence
       FROM images
       WHERE camera_id = ${id}
-      AND taken_at > NOW() - INTERVAL '${parseInt(timeframe)} days'
+      AND COALESCE(taken_at, uploaded_at) > ${cutoffDate}
     `;
 
     // Get animal counts for this camera
@@ -402,11 +407,12 @@ cameras.get('/:id/analytics', requireAuth, async (c) => {
         detected_animal_scientific as scientific_name,
         COUNT(*) as count,
         AVG(CAST(detection_confidence as FLOAT)) as avg_confidence,
-        MAX(taken_at) as last_seen
+        MAX(COALESCE(taken_at, uploaded_at)) as last_seen
       FROM images
       WHERE camera_id = ${id}
       AND confirmation_status = 'confirmed'
-      AND taken_at > NOW() - INTERVAL '${parseInt(timeframe)} days'
+      AND detected_animal IS NOT NULL
+      AND COALESCE(taken_at, uploaded_at) > ${cutoffDate}
       GROUP BY detected_animal, detected_animal_scientific
       ORDER BY count DESC
     `;
@@ -415,12 +421,12 @@ cameras.get('/:id/analytics', requireAuth, async (c) => {
     const [approvalBreakdown] = await sql`
       SELECT 
         COUNT(*) as total_approved,
-        COUNT(CASE WHEN approval_method = 'auto_approved' THEN 1 END) as auto_approved,
-        COUNT(CASE WHEN approval_method = 'manual_approved' THEN 1 END) as manual_approved
+        COUNT(CASE WHEN auto_approved = true THEN 1 END) as auto_approved,
+        COUNT(CASE WHEN auto_approved = false THEN 1 END) as manual_approved
       FROM images
       WHERE camera_id = ${id}
       AND confirmation_status = 'confirmed'
-      AND taken_at > NOW() - INTERVAL '${parseInt(timeframe)} days'
+      AND COALESCE(taken_at, uploaded_at) > ${cutoffDate}
     `;
 
     return c.json({
@@ -431,24 +437,24 @@ cameras.get('/:id/analytics', requireAuth, async (c) => {
         status: camera.status
       },
       analytics: {
-        timeframe_days: parseInt(timeframe),
-        total_detections: summary.total_detections || 0,
-        confirmed_detections: summary.confirmed_detections || 0,
-        pending_detections: summary.pending_detections || 0,
-        rejected_detections: summary.rejected_detections || 0,
+        timeframe_days: days,
+        total_detections: parseInt(summary.total_detections) || 0,
+        confirmed_detections: parseInt(summary.confirmed_detections) || 0,
+        pending_detections: parseInt(summary.pending_detections) || 0,
+        rejected_detections: parseInt(summary.rejected_detections) || 0,
         average_confidence: summary.avg_confidence ? parseFloat(summary.avg_confidence) : 0,
         last_detection: summary.last_detection,
         animals: animalCounts.map((row: any) => ({
           name: row.animal,
           scientific_name: row.scientific_name,
-          count: row.count,
-          avg_confidence: parseFloat(row.avg_confidence),
+          count: parseInt(row.count) || 0,
+          avg_confidence: row.avg_confidence ? parseFloat(row.avg_confidence) : 0,
           last_seen: row.last_seen
         })),
         approval_breakdown: {
-          total_approved: approvalBreakdown.total_approved || 0,
-          auto_approved: approvalBreakdown.auto_approved || 0,
-          manual_approved: approvalBreakdown.manual_approved || 0
+          total_approved: parseInt(approvalBreakdown.total_approved) || 0,
+          auto_approved: parseInt(approvalBreakdown.auto_approved) || 0,
+          manual_approved: parseInt(approvalBreakdown.manual_approved) || 0
         }
       }
     });

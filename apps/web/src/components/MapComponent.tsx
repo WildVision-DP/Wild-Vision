@@ -34,6 +34,7 @@ interface MapComponentProps {
     cameras?: Array<{
         id: string;
         camera_id: string;
+        camera_name: string;
         latitude: number;
         longitude: number;
         status: string;
@@ -88,7 +89,7 @@ export default function MapComponent({
     // Fetch camera analytics
     const fetchCameraAnalytics = useCallback(async (cameraId: string) => {
         try {
-            const token = localStorage.getItem('token');
+            const token = localStorage.getItem('accessToken');
             const response = await fetch(`/api/cameras/${cameraId}/analytics?timeframe=30`, {
                 headers: {
                     'Authorization': `Bearer ${token}`,
@@ -289,7 +290,10 @@ export default function MapComponent({
                             <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="white" style="display: inline-block; margin-bottom: 8px;">
                                 <path d="M9 2L7.17 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2h-3.17L15 2H9zm3 15c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5z"/>
                             </svg>
-                            <h3 style="font-weight: 600; margin: 0; color: white; font-size: 16px;">${camera.camera_id}</h3>
+                            <h3 style="font-weight: 600; margin: 0; color: white; font-size: 16px;">
+                                ${camera.camera_name ? camera.camera_name : (camera.camera_id || 'Unnamed Camera')}
+                            </h3>
+                            ${camera.camera_name ? `<div style="font-size: 10px; opacity: 0.9; margin-top: 2px;">ID: ${camera.camera_id}</div>` : ''}
                         </div>
                         <div id="analytics-${camera.id}" style="padding: 16px; font-size: 13px; color: #555; line-height: 1.6;">
                             <div style="text-align: center; padding: 20px; color: #999;">
@@ -490,7 +494,7 @@ export default function MapComponent({
                                '✗ Rejected';
 
             const thumbnailHtml = detection.thumbnail_path 
-                ? `<img src="/api/image/${detection.thumbnail_path}" alt="${detection.detected_animal}" style="width: 100px; height: 100px; object-fit: cover; border-radius: 4px; margin-bottom: 8px;" />`
+                ? `<img src="/api/proxy/${detection.thumbnail_path}" alt="${detection.detected_animal}" style="width: 100px; height: 100px; object-fit: cover; border-radius: 4px; margin-bottom: 8px;" />`
                 : '';
 
             const detectionInfoWindow = new google.maps.InfoWindow({

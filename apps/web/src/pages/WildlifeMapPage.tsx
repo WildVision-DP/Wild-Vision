@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react';
 import MapComponent from '../components/MapComponent';
+import CameraGallery from '@/components/CameraGallery';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { PawPrint, Video, RefreshCw, AlertCircle } from 'lucide-react';
+import { PawPrint, Video, RefreshCw, AlertCircle, X } from 'lucide-react';
 
 type Camera = {
     id: string;
     camera_id: string;
+    camera_name: string;
     latitude: number;
     longitude: number;
     status: string;
@@ -32,9 +34,20 @@ export default function WildlifeMapPage() {
     const [detections, setDetections] = useState<Detection[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [viewGalleryId, setViewGalleryId] = useState<string | null>(null);
 
     useEffect(() => {
         fetchMapData();
+
+        // Listen for map popup events
+        const handleOpenGallery = (e: any) => {
+            if (e.detail) {
+                console.log('WildlifeMap: Opening gallery for camera:', e.detail);
+                setViewGalleryId(e.detail);
+            }
+        };
+        window.addEventListener('open-camera-gallery', handleOpenGallery);
+        return () => window.removeEventListener('open-camera-gallery', handleOpenGallery);
     }, []);
 
     const fetchMapData = async () => {
@@ -199,6 +212,13 @@ export default function WildlifeMapPage() {
                     </div>
                 </div>
             )}
+            {/* Camera Gallery Modal */}
+            <CameraGallery
+                cameraId={viewGalleryId || ''}
+                cameraName={cameras.find(c => c.id === viewGalleryId)?.camera_name || (cameras.find(c => c.id === viewGalleryId)?.camera_id) || 'Camera'}
+                isOpen={!!viewGalleryId}
+                onClose={() => setViewGalleryId(null)}
+            />
         </div>
     );
 }

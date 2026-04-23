@@ -22,9 +22,9 @@ admin.get('/reviews', requireAuth, requireRoleLevel(2), async (c) => {
             offset = '0',
             sort = 'uploaded_at',
             animal_filter = '',
-            status_filter = 'pending_review',
+            status_filter = 'pending_confirmation',
             confidence_min = '0',
-            confidence_max = '0.9'
+            confidence_max = '90'
         } = c.req.query();
 
         const allowedSorts = ['uploaded_at', 'detection_confidence', 'camera_name'];
@@ -34,7 +34,7 @@ admin.get('/reviews', requireAuth, requireRoleLevel(2), async (c) => {
         let whereClause = 'WHERE i.auto_approved = false AND i.detected_animal IS NOT NULL';
 
         if (statusFilter) {
-            whereClause += ` AND i.detection_status = '${statusFilter}'`;
+            whereClause += ` AND i.confirmation_status = '${statusFilter}'`;
         }
 
         if (animal_filter) {
@@ -42,7 +42,7 @@ admin.get('/reviews', requireAuth, requireRoleLevel(2), async (c) => {
         }
 
         const confidenceMinVal = parseFloat(confidence_min) || 0;
-        const confidenceMaxVal = parseFloat(confidence_max) || 1;
+        const confidenceMaxVal = parseFloat(confidence_max) || 10000;
         whereClause += ` AND CAST(i.detection_confidence AS FLOAT) BETWEEN ${confidenceMinVal} AND ${confidenceMaxVal}`;
 
         const orderClause = sortField === 'uploaded_at'
@@ -62,9 +62,9 @@ admin.get('/reviews', requireAuth, requireRoleLevel(2), async (c) => {
                 i.detection_confidence,
                 i.taken_at,
                 i.uploaded_at,
-                i.detection_status,
-                i.reviewed_by,
-                i.reviewed_at,
+                i.confirmation_status,
+                i.confirmed_by,
+                i.confirmed_at,
                 i.metadata,
                 c.camera_name,
                 c.division_id,
@@ -78,7 +78,7 @@ admin.get('/reviews', requireAuth, requireRoleLevel(2), async (c) => {
                 b.name as beat_name,
                 cir.name as circle_name,
                 u.full_name as uploaded_by_name,
-                ru.full_name as reviewed_by_name
+                ru.full_name as confirmed_by_name
             FROM images i
             LEFT JOIN cameras c ON i.camera_id = c.id
             LEFT JOIN divisions d ON c.division_id = d.id
@@ -86,7 +86,7 @@ admin.get('/reviews', requireAuth, requireRoleLevel(2), async (c) => {
             LEFT JOIN beats b ON c.beat_id = b.id
             LEFT JOIN circles cir ON d.circle_id = cir.id
             LEFT JOIN users u ON i.uploaded_by = u.id
-            LEFT JOIN users ru ON i.reviewed_by = ru.id
+            LEFT JOIN users ru ON i.confirmed_by = ru.id
             ${whereClause}
             ${orderClause}
             LIMIT ${parseInt(limit)} OFFSET ${parseInt(offset)}
@@ -134,9 +134,9 @@ admin.get('/reviews/:id', requireAuth, requireRoleLevel(2), async (c) => {
                 i.detection_confidence,
                 i.taken_at,
                 i.uploaded_at,
-                i.detection_status,
-                i.reviewed_by,
-                i.reviewed_at,
+                i.confirmation_status,
+                i.confirmed_by,
+                i.confirmed_at,
                 i.metadata,
                 i.ml_metadata,
                 c.camera_name,
@@ -152,8 +152,8 @@ admin.get('/reviews/:id', requireAuth, requireRoleLevel(2), async (c) => {
                 cir.name as circle_name,
                 u.full_name as uploaded_by_name,
                 u.id as uploaded_by_id,
-                ru.full_name as reviewed_by_name,
-                ru.id as reviewed_by_id
+                ru.full_name as confirmed_by_name,
+                ru.id as confirmed_by_id
             FROM images i
             LEFT JOIN cameras c ON i.camera_id = c.id
             LEFT JOIN divisions d ON c.division_id = d.id
@@ -161,7 +161,7 @@ admin.get('/reviews/:id', requireAuth, requireRoleLevel(2), async (c) => {
             LEFT JOIN beats b ON c.beat_id = b.id
             LEFT JOIN circles cir ON d.circle_id = cir.id
             LEFT JOIN users u ON i.uploaded_by = u.id
-            LEFT JOIN users ru ON i.reviewed_by = ru.id
+            LEFT JOIN users ru ON i.confirmed_by = ru.id
             WHERE i.id = ${id}
         `;
 
@@ -195,7 +195,7 @@ admin.post('/reviews/:id/approve', requireAuth, requireRoleLevel(2), async (c) =
         };
 
         const user = c.get('user');
-        const userId = user.userId;
+        const userId = user.id || user.userId;
 
         // Get the current image
         const [image] = await sql`
@@ -212,19 +212,16 @@ admin.post('/reviews/:id/approve', requireAuth, requireRoleLevel(2), async (c) =
         const [updated] = await sql`
             UPDATE images
             SET 
-                detection_status = 'manual_approved'::detection_status_enum,
-                detected_animal = COALESCE(${body.animal}, detected_animal),
-                reviewed_by = ${userId},
-                reviewed_at = CURRENT_TIMESTAMP,
-                metadata = jsonb_set(
-                    COALESCE(metadata, '{}'::jsonb),
-                    '{review_notes}',
-                    ${JSON.stringify(body.notes || '')}::jsonb
-                )
+                confirmation_status = 'confirmed',
+                detected_animal = COALESCE(${body.animal ?? null}, detected_animal),
+                confirmed_by = ${userId},
+                confirmed_at = CURRENT_TIMESTAMP,
+                metadata = COALESCE(metadata, '{}'::jsonb) || 
+                           jsonb_build_object('review_notes', ${body.notes || ''})
             WHERE id = ${id}
             RETURNING 
                 id, detected_animal, detection_confidence, 
-                detection_status, reviewed_by, reviewed_at
+                confirmation_status, confirmed_by, confirmed_at
         `;
 
         console.log(`✅ Detection approved: ${updated.detected_animal} by ${user.username}`);
@@ -239,7 +236,7 @@ admin.post('/reviews/:id/approve', requireAuth, requireRoleLevel(2), async (c) =
 
     } catch (error) {
         console.error('Approve review error:', error);
-        return c.json({ error: 'Failed to approve review' }, 500);
+        return c.json({ error: 'Failed to approve review', details: error.message }, 500);
     }
 });
 
@@ -256,7 +253,7 @@ admin.post('/reviews/:id/reject', requireAuth, requireRoleLevel(2), async (c) =>
         };
 
         const user = c.get('user');
-        const userId = user.userId;
+        const userId = user.id || user.userId;
 
         // Get the current image
         const [image] = await sql`
@@ -271,21 +268,16 @@ admin.post('/reviews/:id/reject', requireAuth, requireRoleLevel(2), async (c) =>
         const [updated] = await sql`
             UPDATE images
             SET 
-                detection_status = 'rejected'::detection_status_enum,
-                reviewed_by = ${userId},
-                reviewed_at = CURRENT_TIMESTAMP,
-                metadata = jsonb_set(
-                    COALESCE(metadata, '{}'::jsonb),
-                    '{rejection_reason}',
-                    ${JSON.stringify(body.reason || 'No reason provided')}::jsonb
-                ) || 
-                jsonb_set(
-                    metadata,
-                    '{review_notes}',
-                    ${JSON.stringify(body.notes || '')}::jsonb
-                )
+                confirmation_status = 'rejected',
+                confirmed_by = ${userId},
+                confirmed_at = CURRENT_TIMESTAMP,
+                metadata = COALESCE(metadata, '{}'::jsonb) || 
+                           jsonb_build_object(
+                               'rejection_reason', ${body.reason || 'No reason provided'},
+                               'review_notes', ${body.notes || ''}
+                           )
             WHERE id = ${id}
-            RETURNING id, detected_animal, detection_status, reviewed_by, reviewed_at
+            RETURNING id, detected_animal, confirmation_status, confirmed_by, confirmed_at
         `;
 
         console.log(`❌ Detection rejected: ${image.detected_animal} by ${user.username}`);
@@ -315,14 +307,14 @@ admin.post('/reviews/:id/reassess', requireAuth, requireRoleLevel(2), async (c) 
         const [updated] = await sql`
             UPDATE images
             SET 
-                detection_status = 'pending_review'::detection_status_enum,
+                confirmation_status = 'pending_confirmation',
                 metadata = jsonb_set(
                     COALESCE(metadata, '{}'::jsonb),
                     '{reassessment_notes}',
                     ${JSON.stringify(body.notes || '')}::jsonb
                 )
             WHERE id = ${id}
-            RETURNING id, detected_animal, detection_status
+            RETURNING id, detected_animal, confirmation_status
         `;
 
         if (!updated) {
@@ -350,14 +342,14 @@ admin.get('/stats/summary', requireAuth, requireRoleLevel(2), async (c) => {
     try {
         const stats = await sql`
             SELECT 
-                i.detection_status,
+                i.confirmation_status,
                 COUNT(*) as count,
                 AVG(CAST(i.detection_confidence AS FLOAT)) as avg_confidence,
                 MIN(CAST(i.detection_confidence AS FLOAT)) as min_confidence,
                 MAX(CAST(i.detection_confidence AS FLOAT)) as max_confidence
             FROM images i
-            GROUP BY i.detection_status
-            ORDER BY i.detection_status
+            GROUP BY i.confirmation_status
+            ORDER BY i.confirmation_status
         `;
 
         // Count by animal
@@ -365,20 +357,20 @@ admin.get('/stats/summary', requireAuth, requireRoleLevel(2), async (c) => {
             SELECT 
                 detected_animal,
                 COUNT(*) as count,
-                i.detection_status,
+                i.confirmation_status,
                 AVG(CAST(i.detection_confidence AS FLOAT)) as avg_confidence
             FROM images i
             WHERE detected_animal IS NOT NULL 
             AND detected_animal != 'Unknown'
             AND auto_approved = false
-            GROUP BY detected_animal, i.detection_status
+            GROUP BY detected_animal, i.confirmation_status
             ORDER BY count DESC
             LIMIT 10
         `;
 
         return c.json({
             overall: stats.map((s: any) => ({
-                status: s.detection_status,
+                status: s.confirmation_status,
                 count: parseInt(s.count),
                 avg_confidence: parseFloat(s.avg_confidence || '0').toFixed(4),
                 min_confidence: parseFloat(s.min_confidence || '0').toFixed(4),
@@ -386,7 +378,7 @@ admin.get('/stats/summary', requireAuth, requireRoleLevel(2), async (c) => {
             })),
             by_animal: animalStats.map((a: any) => ({
                 animal: a.detected_animal,
-                status: a.detection_status,
+                status: a.confirmation_status,
                 count: parseInt(a.count),
                 avg_confidence: parseFloat(a.avg_confidence || '0').toFixed(4)
             }))
