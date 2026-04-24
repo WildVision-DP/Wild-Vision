@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # PostgreSQL with PostGIS
   postgres:
@@ -47,17 +45,20 @@ services:
       retries: 3
   # Python ML Service
   ml-service:
-    image: python:3.10-slim
+    build:
+      context: ../../apps/ml-service
+      dockerfile: Dockerfile
     container_name: wildvision-ml
     restart: unless-stopped
-    working_dir: /app
-    volumes:
-      - ../../apps/ml-service:/app
-    command: bash -c "pip install --no-cache-dir -r ml_requirements.txt && uvicorn ml_service:app --host 0.0.0.0 --port 8000"
     ports:
       - "8000:8000"
     networks:
       - wildvision-network
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
 volumes:
   postgres_data:
     driver: local
