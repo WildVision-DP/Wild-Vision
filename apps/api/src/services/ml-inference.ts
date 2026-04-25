@@ -3,7 +3,21 @@
  * Calls the Python ML microservice to identify animals in images with confidence scoring
  */
 
-const ML_SERVICE_URL = process.env.ML_SERVICE_URL || 'http://127.0.0.1:8000';
+function normalizeLocalhostUrl(url: string): string {
+    try {
+        const parsed = new URL(url);
+        if (parsed.hostname === 'localhost') {
+            parsed.hostname = '127.0.0.1';
+            return parsed.toString().replace(/\/$/, '');
+        }
+    } catch {
+        return url;
+    }
+
+    return url.replace(/\/$/, '');
+}
+
+const ML_SERVICE_URL = normalizeLocalhostUrl(process.env.ML_SERVICE_URL || 'http://127.0.0.1:8000');
 console.log(`ML Service URL: ${ML_SERVICE_URL}`);
 
 interface MlPrediction {
@@ -65,23 +79,29 @@ export async function predictAnimal(imageBuffer: Buffer, fileName: string): Prom
         }
 
         const prediction = await response.json() as {
-            caption: string;
-            animal: string;
-            confidence: number;
-            autoApproved: boolean;
-            method: string;
+            caption?: string;
+            animal?: string;
+            confidence?: number;
+            label?: string;
+            scientific_name?: string;
+            score?: number;
+            autoApproved?: boolean;
+            method?: string;
             metadata?: Record<string, any>;
         };
 
-        console.log(`✅ Animal detected: ${prediction.animal} (${(prediction.confidence * 100).toFixed(2)}%) ${prediction.autoApproved ? '[AUTO-APPROVED]' : '[PENDING REVIEW]'}`);
+        const label = prediction.animal || prediction.label || 'Unknown';
+        const confidence = prediction.confidence ?? prediction.score ?? 0;
+
+        console.log(`✅ Animal detected: ${label} (${(confidence * 100).toFixed(2)}%) ${prediction.autoApproved ? '[AUTO-APPROVED]' : '[PENDING REVIEW]'}`);
 
         return {
-            label: prediction.animal || 'Unknown',
-            scientific_name: 'unknown', // Could be enhanced with species mapping
-            score: prediction.confidence || 0,
+            label,
+            scientific_name: prediction.scientific_name || 'unknown',
+            score: confidence,
             results: [],
             caption: prediction.caption,
-            confidence: prediction.confidence,
+            confidence,
             autoApproved: prediction.autoApproved,
             method: prediction.method,
             metadata: prediction.metadata

@@ -45,17 +45,30 @@ services:
       retries: 3
   # Python ML Service
   ml-service:
-    build:
-      context: ../../apps/ml-service
-      dockerfile: Dockerfile
+    image: python:3.10-slim
     container_name: wildvision-ml
     restart: unless-stopped
+    working_dir: /app
+    command: >
+      sh -c "python -m venv /opt/ml-venv &&
+             /opt/ml-venv/bin/pip install --no-cache-dir -r ml_requirements.txt &&
+             /opt/ml-venv/bin/uvicorn ml_service:app --host 0.0.0.0 --port 8000"
+    environment:
+      HF_HOME: /cache/huggingface
+      TRANSFORMERS_CACHE: /cache/huggingface
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONUNBUFFERED: "1"
+    volumes:
+      - ../../apps/ml-service:/app
+      - ml_venv:/opt/ml-venv
+      - ml_cache:/cache/huggingface
     ports:
       - "8000:8000"
     networks:
       - wildvision-network
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
+      start_period: 5m
       interval: 10s
       timeout: 5s
       retries: 6
@@ -63,6 +76,10 @@ volumes:
   postgres_data:
     driver: local
   minio_data:
+    driver: local
+  ml_venv:
+    driver: local
+  ml_cache:
     driver: local
 
 networks:

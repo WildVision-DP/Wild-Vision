@@ -5,6 +5,8 @@ from PIL import Image
 import io
 import uvicorn
 import re
+import threading
+import torch
 
 app = FastAPI()
 
@@ -17,18 +19,53 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize BLIP model and processor once on startup
-print("Loading BLIP image captioning model...")
-processor = BlipProcessor.from_pretrained("Salesforce/blip-image-captioning-base")
-model = BlipForConditionalGeneration.from_pretrained("Salesforce/blip-image-captioning-base")
-print("BLIP model loaded successfully!")
+processor = None
+model = None
+model_loading = False
+model_lock = threading.Lock()
+
+
+def get_model():
+    """Load BLIP lazily so /health is reachable even before model download finishes."""
+    global processor, model, model_loading
+
+    if processor is not None and model is not None:
+        return processor, model
+
+    with model_lock:
+        if processor is None or model is None:
+            model_loading = True
+            print("Loading BLIP image captioning model...")
+            try:
+                processor = BlipProcessor.from_pretrained("Salesforce/blip-image-captioning-base")
+                model = BlipForConditionalGeneration.from_pretrained(
+                    "Salesforce/blip-image-captioning-base"
+                )
+                model.eval()
+                print("BLIP model loaded successfully!")
+            finally:
+                model_loading = False
+
+    return processor, model
+
+
+def warm_model_in_background():
+    try:
+        get_model()
+    except Exception as exc:
+        print(f"BLIP model warmup failed: {exc}")
+
+
+@app.on_event("startup")
+async def startup_event():
+    threading.Thread(target=warm_model_in_background, daemon=True).start()
 
 # List of animals to recognize (common names)
 ANIMAL_KEYWORDS = {
     # Big Cats
     "tiger", "lion", "leopard", "cheetah", "jaguar", "cougar", "lynx", "bobcat", "panther", "puma",
     # Canines
-    "wolf", "dog", "fox", "jackal", "hyena", "coyote",
+    "wolf", "dog", "cat", "fox", "jackal", "hyena", "coyote",
     # Primates
     "monkey", "ape", "gorilla", "chimpanzee", "orangutan", "baboon", "macaque",
     # Herbivores
@@ -63,7 +100,7 @@ def extract_animal_from_caption(caption: str) -> tuple[str, dict]:
     # Find matching animals in caption
     found_animals = []
     for animal in ANIMAL_KEYWORDS:
-        if animal in caption_lower:
+        if re.search(rf"\b{re.escape(animal)}\b", caption_lower):
             found_animals.append(animal)
     
     # If multiple animals found, pick the longest name (most specific)
@@ -91,7 +128,12 @@ def extract_animal_from_caption(caption: str) -> tuple[str, dict]:
 @app.get("/health")
 async def health():
     """Health check endpoint"""
-    return {"status": "healthy", "service": "BLIP Animal Detection ML Service"}
+    return {
+        "status": "healthy",
+        "service": "BLIP Animal Detection ML Service",
+        "model_loaded": processor is not None and model is not None,
+        "model_loading": model_loading,
+    }
 
 
 @app.post("/predict")
@@ -113,9 +155,11 @@ async def predict(file: UploadFile = File(...)):
         image = Image.open(io.BytesIO(content)).convert("RGB")
         
         # Process with BLIP
-        inputs = processor(image, return_tensors="pt")
-        out = model.generate(**inputs, max_length=50)
-        caption = processor.decode(out[0], skip_special_tokens=True)
+        current_processor, current_model = get_model()
+        inputs = current_processor(image, return_tensors="pt")
+        with torch.inference_mode():
+            out = current_model.generate(**inputs, max_length=50)
+        caption = current_processor.decode(out[0], skip_special_tokens=True)
         
         # Extract animal from caption
         animal, metadata = extract_animal_from_caption(caption)

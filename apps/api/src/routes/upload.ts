@@ -12,8 +12,28 @@ const upload = new Hono();
 initMinio();
 
 const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
-const ML_SERVICE_URL = process.env.ML_SERVICE_URL || 'http://127.0.0.1:8000';
-const ML_TIMEOUT = 30000;
+function normalizeLocalhostUrl(url: string): string {
+    try {
+        const parsed = new URL(url);
+        if (parsed.hostname === 'localhost') {
+            parsed.hostname = '127.0.0.1';
+            return parsed.toString().replace(/\/$/, '');
+        }
+    } catch {
+        return url;
+    }
+
+    return url.replace(/\/$/, '');
+}
+
+const ML_SERVICE_URL = normalizeLocalhostUrl(
+    process.env.ML_SERVICE_URL || 'http://127.0.0.1:8000'
+);
+const ML_TIMEOUT = Number(process.env.ML_TIMEOUT_MS || 300000);
+const AUTO_APPROVE_CONFIDENCE = Number(process.env.ML_AUTO_APPROVE_CONFIDENCE || 80);
+console.log(`[ML] Service URL: ${ML_SERVICE_URL}`);
+console.log(`[ML] Timeout: ${ML_TIMEOUT}ms`);
+console.log(`[ML] Auto-approve confidence: ${AUTO_APPROVE_CONFIDENCE}%`);
 
 type DetectionResult = {
     label: string;
@@ -22,10 +42,13 @@ type DetectionResult = {
 };
 
 type BLIPResponse = {
-    caption: string;
-    animal: string;
-    confidence: number;
-    method: string;
+    caption?: string;
+    animal?: string;
+    confidence?: number;
+    label?: string;
+    scientific_name?: string;
+    score?: number;
+    method?: string;
     metadata?: any;
 };
 
@@ -103,10 +126,19 @@ async function detectAnimal(
             return null;
         }
 
+        const label = blipResult.animal || blipResult.label;
+        const score = blipResult.confidence ?? blipResult.score ?? 0;
+
+        if (!label) {
+            console.error('❌ ML response did not include an animal label:', blipResult);
+            return null;
+        }
+
         return {
-            label: blipResult.animal,
-            scientific_name: `${blipResult.animal.toLowerCase()}-sp`,
-            score: blipResult.confidence,
+            label,
+            scientific_name:
+                blipResult.scientific_name || `${label.toLowerCase()}-sp`,
+            score,
         };
     } catch (err) {
         console.error('❌ [ML] Detection fetch failed:', err);
@@ -198,8 +230,9 @@ async function runMlAndPersist(
         },
     };
 
-    // Auto-approve if confidence >= 90%
-    const isHighConfidence = hasValidDetection && detectionConfidence >= 90;
+    // Auto-approve confident real detections; keep low-confidence fallback results for review.
+    const isHighConfidence =
+        hasValidDetection && detectionConfidence >= AUTO_APPROVE_CONFIDENCE;
     const confirmationStatus = isHighConfidence ? 'confirmed' : 'pending_confirmation';
     const confirmedAt = isHighConfidence ? new Date().toISOString() : null;
     const confirmedBy = null; // System approvals have null confirmed_by; use auto_approved flag instead
