@@ -1,446 +1,390 @@
-# 🐯 WildVision: Wildlife Surveillance & Movement Analytics Platform
+# WildVision
 
-![Status](https://img.shields.io/badge/status-production-green)
-![License](https://img.shields.io/badge/license-MIT-blue)
-![Python](https://img.shields.io/badge/python-3.11-blue)
-![Node.js](https://img.shields.io/badge/node-20-green)
+WildVision is a wildlife camera-trap surveillance and movement analytics platform. It helps forest teams manage camera locations, upload patrol images, run AI-assisted animal classification, review uncertain detections, and inspect activity through dashboards, reports, and maps.
 
-## 📋 Overview
+The project is organized as a Bun/Node monorepo with a React frontend, Hono API backend, Python FastAPI ML service, PostgreSQL/PostGIS database, and MinIO object storage.
 
-**WildVision** is a comprehensive wildlife surveillance platform that uses machine learning to detect and categorize animals from camera trap images. The system automatically captures wildlife movements, confirms detections, and provides real-time visualization through dashboards and interactive maps.
+## Project Status
 
-### ✨ Key Features
+This project is under active development. The core platform flows are implemented, including authentication, camera/geography management, image upload, BLIP-based animal captioning/classification, review workflows, analytics, and map views.
 
-- 📸 **Photo Upload Interface** - Simple drag-and-drop upload for wildlife images
-- 🤖 **ML-Powered Detection** - Hugging Face model detects 151 animal species with confidence scoring
-- ✅ **User Confirmation Workflow** - Humans validate AI detections before saving
-- 📊 **Detection Dashboard** - View all confirmed wildlife sightings with metadata
-- 🗺️ **Interactive Maps** - Visualize animal locations on the surveillance area map
-- 📍 **Geographic Hierarchy** - Organize cameras by Circle → Division → Range → Beat
-- 🔐 **Role-Based Access Control** - Ground Staff, Field Officer, Admin, Superadmin roles
-- 💾 **Persistent Storage** - PostgreSQL database + MinIO object storage
-- 🐳 **Docker Deployment** - One-command startup for entire system
+## Features
 
-## 🏗️ System Architecture
+- Role-based authentication with JWT access and refresh tokens.
+- Camera inventory management with brand, status, location, and geography hierarchy.
+- Geography hierarchy for Circle, Division, Range, Beat, and Camera organization.
+- Direct image upload workflow with MinIO object storage.
+- BLIP-powered image captioning service for animal classification support.
+- Confidence-based upload handling with high-confidence approval and low-confidence review routing.
+- Admin review queue with approve, reject, reassess, undo, audit history, and CSV export support.
+- Dashboard for camera health, verified detections, review pressure, and network map context.
+- Wildlife map with camera markers, status legend, recent detections, and camera gallery access.
+- Camera analytics and PDF report export.
+- Offline-aware upload queue using IndexedDB on the web client.
 
-### Three-Service Model
+## Architecture
 
-```
-User Interface          API Backend            ML Intelligence
-┌──────────────┐       ┌──────────────┐      ┌──────────────┐
-│              │       │              │      │              │
-│   React UI   │──────▶│  Hono API    │─────▶│ FastAPI ML   │
-│  (Port 3000) │       │ (Port 4000)  │      │ (Port 8000)  │
-│              │       │              │      │  Hugging Face│
-└──────────────┘       └──────────────┘      └──────────────┘
-       │                      │                     ▲
-       └──────────┬───────────┴─────────────────────┘
-                  ▼
-         PostgreSQL + PostGIS
-         MinIO Object Storage
+```text
+apps/web          React + Vite frontend
+apps/api          Hono API running on Bun
+apps/ml-service   FastAPI ML service using BLIP
+infra/docker      PostgreSQL/PostGIS, MinIO, and ML service compose setup
 ```
 
-### Service Breakdown
+Runtime services:
 
-| Service | Port | Technology | Purpose |
-|---------|------|-----------|---------|
-| **Frontend** | 3000 | React + Vite | User interface for upload & dashboard |
-| **Backend API** | 4000 | Hono (Bun runtime) | Image processing, ML coordination, database |
-| **ML Service** | 8000 | FastAPI (Python) | Animal detection using Hugging Face model |
-| **Database** | 5433 | PostgreSQL + PostGIS | Images, detections, camera locations |
-| **Storage** | 9000 | MinIO S3-compatible | Image files and thumbnails |
+| Service | Default Port | Purpose |
+| --- | ---: | --- |
+| Web app | 3000 | Browser UI for operations, review, uploads, maps, and reports |
+| API | 4000 | Authentication, uploads, camera/geography data, review workflows |
+| ML service | 8000 | BLIP image captioning and animal keyword extraction |
+| PostgreSQL/PostGIS | 5432 | Relational and geospatial data |
+| MinIO | 9000, 9001 | Image storage and MinIO console |
 
-## 🚀 Quick Start
+## Technology Stack
 
-### Prerequisites
-- Docker & Docker Compose
+Frontend:
+
+- React 18
+- Vite
+- TypeScript
+- Tailwind CSS
+- React Router
+- React Dropzone
+- Google Maps JavaScript API
+- jsPDF and jspdf-autotable
+- IndexedDB for offline upload queueing
+
+Backend:
+
+- Bun
+- Hono
+- PostgreSQL via `postgres`
+- MinIO SDK
+- Sharp for image processing
+- JWT authentication
+
+ML service:
+
+- Python
+- FastAPI
+- Transformers
+- PyTorch CPU build
+- Salesforce BLIP image captioning base model
+
+## Repository Structure
+
+```text
+.
+|-- apps
+|   |-- api              # Hono API service
+|   |-- web              # React frontend
+|   |-- ml-service       # FastAPI BLIP service
+|   `-- ai-node          # Bun AI service placeholder/experimental package
+|-- docs                 # Planning and project documentation
+|-- infra
+|   `-- docker           # Docker Compose and database init scripts
+|-- scripts              # Utility scripts
+|-- TASKS.md             # Implementation tracker
+|-- package.json         # Workspace scripts
+`-- bun.lock             # Bun lockfile
+```
+
+## Prerequisites
+
 - Git
-- ~8GB disk space (for ML model)
+- Bun 1.x
+- Node.js 18 or newer
+- Docker and Docker Compose
+- Python 3.10 or newer, if running the ML service outside Docker
 
-### Deploy Everything with One Command
+Optional:
 
-```bash
-cd Wild-Vision
-docker-compose -f infra/docker/docker-compose.yml up --build
-```
+- Google Maps API key for interactive maps.
+- Sufficient disk space for Python packages and the BLIP model cache.
 
-The system will automatically:
-1. ✅ Start PostgreSQL database
-2. ✅ Start MinIO object storage
-3. ✅ Download & initialize ML model (first run: 2-10 minutes)
-4. ✅ Build & start backend API
-5. ✅ Build & start frontend UI
+## Environment Setup
 
-**Access the platform:**
-- 🌐 Frontend: http://localhost:3000
-- 📡 API Docs: http://localhost:4000
-- 🤖 ML Docs: http://localhost:8000/docs
-- 💾 Storage: http://localhost:9001 (minioadmin / minioadmin123)
-
-## 📤 Photo Upload & Detection Workflow
-
-### Step 1: Upload Photo
-```
-User selects photo from device
-    ↓
-Frontend asks: "Which camera captured this?"
-    ↓
-User selects from geographic hierarchy
-```
-
-### Step 2: Image Transmission
-```
-Frontend requests presigned upload URL
-    ↓
-User's browser uploads directly to MinIO (secure, fast)
-    ↓
-Backend receives completion notification
-```
-
-### Step 3: ML Detection
-```
-Backend downloads image from MinIO
-    ↓
-Backend extracts EXIF metadata (time, location)
-    ↓
-Backend sends to ML service
-    ↓
-ML service processes with Hugging Face model
-    ↓
-Returns: { animal: "Tiger", confidence: 0.94, scientific_name: "panthera-tigris" }
-```
-
-### Step 4: User Confirmation
-```
-Frontend shows modal with:
-  ├─ Full image preview
-  ├─ Detected animal: "Tiger"
-  ├─ Confidence: 94%
-  └─ Buttons: [Confirm] [Reject]
-    ↓
-User clicks "Confirm Detection"
-```
-
-### Step 5: Save & Display
-```
-Backend saves detection as "confirmed"
-    ↓
-Dashboard updated instantly
-    ↓
-Map adds marker at this location
-    ↓
-Detection appears in "Recent Confirmed Detections"
-```
-
-## 💾 Database Schema
-
-### Key Tables
-
-#### `images`
-Stores uploaded photos and detection results
-```sql
-- id: UUID (primary key)
-- camera_id: UUID (which camera)
-- file_path: VARCHAR (path in MinIO)
-- detected_animal: VARCHAR (e.g., "Tiger")
-- detection_confidence: NUMERIC (0-100%)
-- confirmation_status: VARCHAR ('pending_confirmation', 'confirmed', 'rejected')
-- confirmed_at: TIMESTAMP (when user confirmed)
-- confirmed_by: UUID (which user confirmed)
-- taken_at: TIMESTAMP (from EXIF data)
-- metadata: JSONB (EXIF, GPS, etc.)
-```
-
-#### `cameras`
-Geographic-aware camera locations
-```sql
-- id: UUID
-- camera_id: VARCHAR (unique identifier)
-- circle_id, division_id, range_id, beat_id
-- name, description, location (PostGIS geometry)
-```
-
-#### Geographic Hierarchy
-```
-Circle (Reserve/Protected Area)
-    └─ Division
-        └─ Range
-            └─ Beat
-                └─ Camera
-```
-
-## 🔐 Authentication & Roles
-
-All API requests require JWT token with role level:
-
-| Role | Level | Permissions |
-|------|-------|-------------|
-| Ground Staff | 1 | View cameras, upload images |
-| Field Officer | 2 | + Manage camera locations |
-| Admin | 3 | + Manage all users and data |
-| Superadmin | 4 | + System configuration |
-
-### Login
-```bash
-POST /api/auth/login
-{
-  "email": "user@example.com",
-  "password": "password"
-}
-
-Response:
-{
-  "token": "eyJhbGc...",
-  "user": { "id": "...", "email": "...", "role": 1 }
-}
-```
-
-## 🐳 Docker Deployment Guide
-
-See [DOCKER_DEPLOYMENT.md](./DOCKER_DEPLOYMENT.md) for comprehensive guide including:
-- Complete architecture diagram
-- Service health checking
-- Environment variable configuration
-- Troubleshooting guide
-- Production deployment notes
-
-## 📊 API Examples
-
-### Upload a Photo
-
-**1. Get Presigned Upload URL**
-```bash
-POST /api/upload/request
-Authorization: Bearer <token>
-Content-Type: application/json
-
-{
-  "filename": "tiger_photo.jpg",
-  "file_type": "image/jpeg",
-  "file_size": 2048576,
-  "camera_id": "tadoba-cam-01"
-}
-
-Response: { "upload_url": "...", "file_path": "...", "uuid": "..." }
-```
-
-**2. Upload to MinIO**
-```bash
-PUT <presigned_url>
-Content-Type: image/jpeg
-
-[binary image data]
-```
-
-**3. Get ML Detection**
-```bash
-POST /api/upload/complete
-Authorization: Bearer <token>
-Content-Type: application/json
-
-{
-  "file_path": "tadoba/division1/.../image.jpg",
-  "camera_id": "tadoba-cam-01",
-  "original_filename": "tiger_photo.jpg",
-  "file_size": 2048576
-}
-
-Response: {
-  "pending_detection": {
-    "id": "uuid",
-    "detected_animal": "Tiger",
-    "confidence": 94,
-    "thumbnail_path": "..."
-  }
-}
-```
-
-**4. Confirm Detection**
-```bash
-POST /api/upload/confirm
-Authorization: Bearer <token>
-Content-Type: application/json
-
-{
-  "image_id": "uuid",
-  "confirmed": true
-}
-```
-
-### Query Confirmed Detections
+Copy the example environment file:
 
 ```bash
-GET /api/images?confirmation_status=confirmed&limit=10
-Authorization: Bearer <token>
-
-Response: [
-  {
-    "id": "uuid",
-    "detected_animal": "Tiger",
-    "detection_confidence": 94,
-    "confirmed_at": "2026-03-15T14:30:00Z",
-    "thumbnail_path": "...",
-    "camera_id": "tadoba-cam-01"
-  },
-  ...
-]
+cp .env.example .env
 ```
 
-## 🛠️ Development Guide
+Important variables:
 
-### Run Locally (Without Docker)
+```env
+DB_HOST=localhost
+DB_PORT=5432
+DB_NAME=wildvision
+DB_USER=wildvision_user
+DB_PASSWORD=wildvision_dev_password
 
-**1. Start Services**
+MINIO_ENDPOINT=localhost
+MINIO_PORT=9000
+MINIO_ROOT_USER=minioadmin
+MINIO_ROOT_PASSWORD=minioadmin123
+MINIO_BUCKET=wildvision-images
+
+JWT_SECRET=change-this-in-production
+API_PORT=4000
+ML_SERVICE_URL=http://127.0.0.1:8000
+CORS_ORIGIN=http://localhost:3000
+```
+
+For maps, configure the frontend environment as needed:
+
+```env
+VITE_GOOGLE_MAPS_API_KEY=your-google-maps-key
+VITE_GOOGLE_MAPS_MAP_ID=optional-map-id
+```
+
+## Running the Project
+
+### 1. Install workspace dependencies
+
 ```bash
-# Terminal 1: PostgreSQL + MinIO
-cd Wild-Vision/infra/docker
-docker-compose up postgres minio
-
-# Terminal 2: ML Service
-python ml_service.py
-# Runs on http://localhost:8000
-
-# Terminal 3: Backend API
-cd Wild-Vision/apps/api
 bun install
-bun run src/db/migrate.ts  # Run migrations
-bun run dev  # Runs on http://localhost:4000
-
-# Terminal 4: Frontend
-cd Wild-Vision/apps/web
-npm install
-npm run dev  # Runs on http://localhost:3000
 ```
 
-**2. Run Database Migrations**
+### 2. Start infrastructure services
+
+From the repository root:
+
 ```bash
-cd Wild-Vision/apps/api
+docker compose -f infra/docker/docker-compose.yml up -d postgres minio ml-service
+```
+
+This starts:
+
+- PostgreSQL/PostGIS
+- MinIO
+- Python ML service
+
+MinIO console:
+
+```text
+http://localhost:9001
+```
+
+Default development credentials are configured in `infra/docker/docker-compose.yml`.
+
+### 3. Run database migrations
+
+```bash
+cd apps/api
 bun run src/db/migrate.ts
 ```
 
-**3. Seed Test Data**
+If seed scripts are needed, check `apps/api/src/db` and `infra/docker/init-scripts`.
+
+### 4. Start the API
+
 ```bash
-# Database is auto-seeded with:
-# - 25 test cameras in Tadoba Andhari Tiger Reserve
-# - Complete geographic hierarchy
-# - Test users with different roles
-```
-
-## 📈 ML Model Details
-
-### Hugging Face Model: `dima806/animal_151_types_image_detection`
-
-**Capabilities:**
-- Detects 151 animal species
-- Returns confidence scores (0-100%)
-- Fast inference (~1-5 seconds per image)
-- Works on CPU and GPU
-
-**Supported Animals:**
-- Big cats: Tiger, Lion, Leopard, Jaguar, Cougar, Cheetah
-- Primates: Gorilla, Chimpanzee, Orangutan
-- Elephants: Asian, African
-- Ungulates: Deer, Buffalo, Antelope, Zebra
-- Carnivores: Wolf, Bear, Hyena, Badger
-- ...and 130+ more species
-
-### Fallback Behavior
-If ML service is unavailable, system uses random detection (dev mode). In production, upload is rejected with error.
-
-## 🧪 Testing
-
-### Manual Testing Checklist
-
-- [ ] Upload an animal image
-- [ ] Confirm detection appears with correct animal & confidence
-- [ ] Reject detection and re-upload (should allow retry)
-- [ ] Check detection appears on Dashboard
-- [ ] Check detection marker appears on Wildlife Map
-- [ ] Filter by confirmation status on images list
-- [ ] Test role-based access (Field Officer can upload, Ground Staff cannot)
-- [ ] Query confirmed detections via API
-
-### Integration Testing
-```bash
-# Run test suites
-cd Wild-Vision
-npm run test
-
-# API endpoint tests
 cd apps/api
-bun run test/endpoints.ts
+bun run dev
 ```
 
-## 📦 Project Structure
+API runs at:
 
-```
-wildvision_model_integration/
-├── Wild-Vision/                    # Main monorepo
-│   ├── apps/
-│   │   ├── api/                    # Backend (Hono)
-│   │   │   ├── src/
-│   │   │   │   ├── index.ts        # Main server
-│   │   │   │   ├── routes/         # API endpoints
-│   │   │   │   ├── services/       # Business logic
-│   │   │   │   ├── db/             # Database & migrations
-│   │   │   │   └── middleware/     # Auth, logging
-│   │   │   └── Dockerfile          # Container config
-│   │   │
-│   │   └── web/                    # Frontend (React)
-│   │       ├── src/
-│   │       │   ├── pages/          # Upload, Dashboard, Map
-│   │       │   ├── components/     # Reusable UI
-│   │       │   └── lib/            # Utilities
-│   │       └── Dockerfile          # Container config
-│   │
-│   ├── infra/
-│   │   └── docker/
-│   │       ├── docker-compose.yml  # All services config
-│   │       └── init-scripts/       # DB initialization
-│   │
-│   └── docs/                       # Documentation
-│
-├── Dockerfile.ml                   # ML service container
-├── ml_service.py                   # Python FastAPI service
-├── ml_requirements.txt             # Python dependencies
-└── DOCKER_DEPLOYMENT.md           # Deployment guide
+```text
+http://localhost:4000
 ```
 
-## 🔒 Security Considerations
+### 5. Start the web app
 
-- ✅ JWT-based authentication on all API endpoints
-- ✅ Role-based access control (Ground Staff → Superadmin)
-- ✅ Presigned URLs for secure file uploads
-- ✅ HTTPS ready (configure in production)
-- ⚠️ Default credentials should be changed in production
-- ⚠️ Rate limiting recommended for public deployment
+```bash
+cd apps/web
+npm run dev
+```
 
-## 🐛 Known Issues & Limitations
+Web app runs at:
 
-1. **ML Model Size**: First run downloads ~2GB model - expect 3-10 minutes
-2. **GPU Support**: Works on CPU, but much faster with NVIDIA GPU
-3. **Concurrent Uploads**: Limited by available memory
-4. **Geographic Accuracy**: GPS data extracted from EXIF, may be inaccurate
+```text
+http://localhost:3000
+```
 
-## 📞 Support & Contribution
+### 6. Run the ML service manually, if not using Docker
 
-- 📧 Contact: [your-email]
-- 🐛 Report Issues: GitHub Issues section
-- 🤝 Contribute: Fork, branch, pull request workflow
+```bash
+cd apps/ml-service
+python -m venv .venv
+.venv\Scripts\activate
+pip install -r ml_requirements.txt
+uvicorn ml_service:app --host 0.0.0.0 --port 8000
+```
 
-## 📄 License
+ML docs:
 
-MIT License - See LICENSE file for details
+```text
+http://localhost:8000/docs
+```
 
-## 🙏 Acknowledgments
+## Common Commands
 
-- **Hugging Face** - `dima806/animal_151_types_image_detection` model
-- **Bun Team** - Fast JavaScript runtime
-- **FastAPI** - Modern Python web framework
-- **PostGIS** - Geospatial database extension
+From the repository root:
 
----
+```bash
+bun install
+bun run dev
+bun run lint
+bun run test
+```
 
-**Status**: ✅ Production Ready | **Last Updated**: March 2026 | **Version**: 1.0.0
+Frontend:
 
-🐯 **Wildlife Surveillance & Movement Analytics Platform**
+```bash
+cd apps/web
+npm run dev
+npm run build
+npm run preview
+```
+
+API:
+
+```bash
+cd apps/api
+bun run dev
+bun run build
+bun run test
+```
+
+ML service:
+
+```bash
+cd apps/ml-service
+uvicorn ml_service:app --host 0.0.0.0 --port 8000
+```
+
+## Main Workflows
+
+### Authentication
+
+Users sign in through the web app. The API returns JWT tokens and user metadata, which the frontend stores for authenticated requests.
+
+### Camera and Geography Setup
+
+Administrators manage the geography hierarchy and camera inventory:
+
+```text
+Circle -> Division -> Range -> Beat -> Camera
+```
+
+Camera records include operational status, brand/model data, notes, and coordinates used by map views.
+
+### Image Upload
+
+1. User selects geography and source camera.
+2. User captures or uploads one or more image files.
+3. Web app queues files and uploads them to the API.
+4. API stores images in MinIO and sends image data to the ML service.
+5. ML service returns a BLIP caption, extracted animal label, confidence, and metadata.
+6. High-confidence detections can be accepted automatically.
+7. Low-confidence detections are grouped and sent to the admin review queue.
+
+### Review Queue
+
+Admins and authorized reviewers can:
+
+- Filter by animal, status, confidence range, and sort order.
+- Inspect image, camera, location, and prediction metadata.
+- Correct species labels.
+- Approve, reject, or reassess detections.
+- Undo the latest review action when allowed.
+- Export audit and verification reports.
+
+### Maps and Analytics
+
+The app includes:
+
+- Camera network map.
+- Wildlife activity map.
+- Camera status and detection summaries.
+- Camera analytics table.
+- PDF report exports.
+
+## API Surface
+
+Route groups are implemented under `apps/api/src/routes`:
+
+```text
+/api/auth
+/api/users
+/api/cameras
+/api/geography
+/api/brands
+/api/upload
+/api/images
+/api/admin
+/api/proxy
+/api/test
+```
+
+Representative endpoints:
+
+```http
+POST /api/auth/login
+GET  /api/cameras
+POST /api/cameras
+GET  /api/geography/divisions
+POST /api/upload/direct
+GET  /api/images?confirmation_status=confirmed
+GET  /api/admin/reviews
+POST /api/admin/reviews/:id/approve
+POST /api/admin/reviews/:id/reject
+GET  /api/admin/stats/summary
+```
+
+## ML Service Notes
+
+The current ML service uses `Salesforce/blip-image-captioning-base`.
+
+Important limitation:
+
+- BLIP is an image captioning model, not an object detector.
+- The service extracts animal labels from generated captions using keyword matching.
+- It does not produce reliable bounding boxes.
+- Review UI should treat BLIP output as classification support, not detector-localization proof.
+
+## Testing and Verification
+
+Recommended checks before pushing changes:
+
+```bash
+cd apps/web
+npm run build
+```
+
+```bash
+cd apps/api
+bun run test
+```
+
+Manual smoke test:
+
+- Log in.
+- Open Dashboard.
+- Open Cameras and verify map/list views.
+- Upload one or more images.
+- Confirm high-confidence and low-confidence grouped behavior.
+- Open Admin Review and approve/reject a detection.
+- Open Wildlife Map and Analytics.
+
+## Development Notes
+
+- The root package manager is Bun.
+- The frontend currently uses npm scripts inside `apps/web`.
+- The root `build` script should be reviewed before relying on it for production builds.
+- The project contains planning files such as `TASKS.md` and `docs/planning/*`; keep them updated when completing tracked work.
+
+## Security Notes
+
+- Change default MinIO and JWT credentials before any production deployment.
+- Keep `.env` out of version control.
+- Use HTTPS in deployed environments.
+- Restrict Google Maps API keys by domain.
+- Add production-grade rate limiting and logging before public exposure.
+
+## License
+
+MIT License. See `LICENSE` if present in this repository.
