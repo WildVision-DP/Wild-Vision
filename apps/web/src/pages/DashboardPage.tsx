@@ -6,6 +6,12 @@ import AdvancedDashboard from '@/components/AdvancedDashboard';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
+import {
+    getDetectionReviewLabel,
+    getDetectionReviewStatus,
+    isAutoApprovedDetection,
+    normalizeConfidence,
+} from '@/utils/detections';
 
 export default function DashboardPage() {
     const [cameraStats, setCameraStats] = useState({ active: 0, inactive: 0, maintenance: 0, total: 0 });
@@ -123,15 +129,15 @@ export default function DashboardPage() {
             // Fetch detections with stats
             if (detectionsRes.ok) {
                 const detectionsData = await detectionsRes.json();
-                console.log('Dashboard: Confirmed detections loaded:', detectionsData.images?.length || 0);
-                const detections = detectionsData.images || [];
+                const detections = Array.isArray(detectionsData) ? detectionsData : detectionsData.images || [];
+                console.log('Dashboard: Confirmed detections loaded:', detections.length);
                 setConfirmedDetections(detections);
                 
                 // Calculate detection stats
                 const stats = {
-                    autoApproved: detections.filter((d: any) => d.auto_approved === true).length,
-                    manualApproved: detections.filter((d: any) => d.detection_status === 'manual_approved').length,
-                    pendingReview: detections.filter((d: any) => d.detection_status === 'pending_review').length
+                    autoApproved: detections.filter((d: any) => isAutoApprovedDetection(d)).length,
+                    manualApproved: detections.filter((d: any) => getDetectionReviewStatus(d) === 'manual_confirmed').length,
+                    pendingReview: detections.filter((d: any) => getDetectionReviewStatus(d) === 'pending_confirmation').length
                 };
                 setDetectionStats(stats);
             } else {
@@ -404,8 +410,8 @@ export default function DashboardPage() {
                                     >
                                         <option value="all">All Status</option>
                                         <option value="auto_approved">Auto Approved</option>
-                                        <option value="manual_approved">Manual Approved</option>
-                                        <option value="pending_review">Pending Review</option>
+                                        <option value="manual_confirmed">Manual Approved</option>
+                                        <option value="pending_confirmation">Pending Review</option>
                                     </select>
                                 </div>
 
@@ -471,8 +477,8 @@ export default function DashboardPage() {
                         {confirmedDetections
                             .filter((d) => {
                                 if (animalFilter && !d.detected_animal.toLowerCase().includes(animalFilter.toLowerCase())) return false;
-                                if (statusFilter !== 'all' && d.detection_status !== statusFilter) return false;
-                                const conf = Math.round((d.detection_confidence || 0) * 100);
+                                if (statusFilter !== 'all' && getDetectionReviewStatus(d) !== statusFilter) return false;
+                                const conf = normalizeConfidence(d.detection_confidence);
                                 if (conf < confidenceMin || conf > confidenceMax) return false;
                                 return true;
                             })
@@ -483,14 +489,17 @@ export default function DashboardPage() {
                                     case 'oldest':
                                         return new Date(a.confirmed_at || 0).getTime() - new Date(b.confirmed_at || 0).getTime();
                                     case 'confidence_high':
-                                        return (b.detection_confidence || 0) - (a.detection_confidence || 0);
+                                        return normalizeConfidence(b.detection_confidence) - normalizeConfidence(a.detection_confidence);
                                     case 'name_asc':
                                         return (a.detected_animal || '').localeCompare(b.detected_animal || '');
                                     default:
                                         return 0;
                                 }
                             })
-                            .map((detection) => (
+                            .map((detection) => {
+                                const confidence = normalizeConfidence(detection.detection_confidence);
+                                const reviewStatus = getDetectionReviewStatus(detection);
+                                return (
                                 <div key={detection.id} className="bg-gray-50 border border-gray-200 rounded-lg overflow-hidden hover:shadow-md transition-shadow duration-200">
                                     {/* Thumbnail */}
                                     <div className="relative w-full h-48 bg-gray-200">
@@ -510,19 +519,19 @@ export default function DashboardPage() {
                                         )}
                                         {/* Status Badge */}
                                         <div className={`absolute top-2 left-2 px-2 py-1 rounded text-white text-xs font-semibold ${
-                                            detection.auto_approved ? 'bg-green-600' :
-                                            detection.detection_status === 'manual_approved' ? 'bg-blue-600' :
-                                            'bg-yellow-600'
+                                            reviewStatus === 'auto_approved' ? 'bg-green-600' :
+                                            reviewStatus === 'manual_confirmed' ? 'bg-blue-600' :
+                                            reviewStatus === 'rejected' ? 'bg-red-600' : 'bg-yellow-600'
                                         }`}>
-                                            {detection.auto_approved ? '✓ Auto' : detection.detection_status === 'manual_approved' ? '✓ Verified' : '⏳ Pending'}
+                                            {getDetectionReviewLabel(detection)}
                                         </div>
                                         {/* Confidence Badge */}
                                         {detection.detection_confidence && (
                                             <div className={`absolute top-2 right-2 px-2 py-1 rounded text-white text-xs font-semibold ${
-                                                detection.detection_confidence >= 0.8 ? 'bg-green-600' :
-                                                detection.detection_confidence >= 0.6 ? 'bg-yellow-600' : 'bg-red-600'
+                                                confidence >= 80 ? 'bg-green-600' :
+                                                confidence >= 60 ? 'bg-yellow-600' : 'bg-red-600'
                                             }`}>
-                                                {Math.round(detection.detection_confidence * 100)}%
+                                                {confidence}%
                                             </div>
                                         )}
                                     </div>
@@ -540,7 +549,8 @@ export default function DashboardPage() {
                                         </div>
                                     </div>
                                 </div>
-                            ))}
+                                );
+                            })}
                     </div>
                 </div>
             )}

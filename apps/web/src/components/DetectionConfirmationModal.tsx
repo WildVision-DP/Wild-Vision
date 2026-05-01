@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { Button } from './ui/button';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from './ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import Modal from './ui/Modal';
 import { CheckCircle, RefreshCw, Loader, Edit2, Save, X, AlertCircle } from 'lucide-react';
+import { normalizeConfidence } from '@/utils/detections';
 
 interface DetectionConfirmationModalProps {
     isOpen: boolean;
@@ -22,10 +23,6 @@ interface DetectionConfirmationModalProps {
     onDismiss?: () => void; // For auto-approved: close without deleting
 }
 
-interface MinIOFileData {
-    thumbnailPath: string;
-}
-
 export default function DetectionConfirmationModal({
     isOpen,
     imageData,
@@ -37,7 +34,6 @@ export default function DetectionConfirmationModal({
     const [error, setError] = useState<string | null>(null);
     const [isEditing, setIsEditing] = useState(false);
     const [editedAnimal, setEditedAnimal] = useState(imageData?.detected_animal || '');
-    const [autoApprovedShown, setAutoApprovedShown] = useState(false);
 
     useEffect(() => {
         if (isOpen && imageData) {
@@ -66,15 +62,14 @@ export default function DetectionConfirmationModal({
 
     if (!imageData) return null;
 
-    // Auto-approve high confidence and show result  
-    const isAutoApproved = imageData.autoApproved || (imageData.confidence >= 0.90);
+    const confidencePercent = normalizeConfidence(imageData.confidence);
+    const isAutoApproved = imageData.autoApproved || confidencePercent >= 80;
     
     // Get thumbnail URL from MinIO via proxy
     const thumbnailUrl = imageData.thumbnail_path
         ? `/api/proxy/${imageData.thumbnail_path}`
         : `/api/proxy/${imageData.file_path.replace(/\.[^/.]+$/, '.jpg')}`;
 
-    const confidencePercent = Math.round(imageData.confidence * 100);
     const confidenceColor = confidencePercent >= 80 ? 'text-green-600' : 
                           confidencePercent >= 60 ? 'text-yellow-600' : 'text-red-600';
 

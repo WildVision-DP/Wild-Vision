@@ -5,6 +5,39 @@ import { predictAnimal } from '../services/ml-inference';
 import { randomUUID } from 'crypto';
 
 const images = new Hono();
+const AUTO_APPROVE_CONFIDENCE = Number(process.env.ML_AUTO_APPROVE_CONFIDENCE || 80);
+
+type CanonicalStatus = 'pending_confirmation' | 'confirmed' | 'rejected';
+
+function normalizeConfidencePercent(value: unknown): number {
+    const parsed = Number(value ?? 0);
+    if (!Number.isFinite(parsed)) return 0;
+    const percent = parsed <= 1 ? parsed * 100 : parsed;
+    return Math.max(0, Math.min(100, Math.round(percent)));
+}
+
+function normalizeImageRow<T extends Record<string, any>>(row: T) {
+    return {
+        ...row,
+        detection_confidence: normalizeConfidencePercent(row.detection_confidence),
+        confirmation_status: (row.confirmation_status || 'pending_confirmation') as CanonicalStatus,
+    };
+}
+
+async function logDetectionAudit(
+    userId: string | null,
+    action: string,
+    metadata: Record<string, unknown>
+) {
+    try {
+        await sql`
+            INSERT INTO audit_logs (user_id, action, metadata)
+            VALUES (${userId}, ${action}, ${sql.json(metadata as any)})
+        `;
+    } catch (err) {
+        console.warn('[audit] Failed to write detection audit log:', err);
+    }
+}
 
 // GET / - List all images with metadata and geography info
 images.get('/', requireAuth, async (c) => {
@@ -129,9 +162,11 @@ images.get('/', requireAuth, async (c) => {
             `;
         }
         
-        const allImages = query;
-
-        return c.json(allImages);
+        return c.json({
+            images: query.map(normalizeImageRow),
+            limit: parseInt(limit),
+            offset: parseInt(offset)
+        });
     } catch (error) {
         console.error('List images error:', error);
         return c.json({ error: 'Failed to fetch images' }, 500);
@@ -159,7 +194,7 @@ images.get('/camera/:camera_id', requireAuth, async (c) => {
             LIMIT ${parseInt(limit)} OFFSET ${parseInt(offset)}
         `;
 
-        return c.json({ images: cameraImages });
+        return c.json({ images: cameraImages.map(normalizeImageRow) });
     } catch (error) {
         console.error('List camera images error:', error);
         return c.json({ error: 'Failed to fetch images' }, 500);
@@ -173,27 +208,46 @@ images.patch('/:id/verify', requireAuth, requireRoleLevel(2), async (c) => {
         const { status, remarks, species } = await c.req.json();
         const user = c.get('user');
 
-        if (!['verified', 'rejected'].includes(status)) {
+        const normalizedStatus: CanonicalStatus | null =
+            status === 'verified' || status === 'confirmed'
+                ? 'confirmed'
+                : status === 'rejected'
+                    ? 'rejected'
+                    : null;
+
+        if (!normalizedStatus) {
             return c.json({ error: 'Invalid status' }, 400);
         }
 
         const [image] = await sql`
             UPDATE images
             SET 
-                review_status = ${status},
-                reviewed_by = ${user.userId},
-                reviewed_at = CURRENT_TIMESTAMP,
-                review_remarks = ${remarks},
-                metadata = jsonb_set(
-                    metadata, 
-                    '{manual_species}', 
-                    ${JSON.stringify(species)}::jsonb
+                confirmation_status = ${normalizedStatus},
+                confirmed_by = ${user.userId},
+                confirmed_at = CURRENT_TIMESTAMP,
+                status = 'processed',
+                detected_animal = COALESCE(${species ?? null}, detected_animal),
+                metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object(
+                    'review_remarks', ${remarks || ''},
+                    'manual_species', ${species || null}
                 )
             WHERE id = ${id}
             RETURNING *
         `;
 
-        return c.json({ message: 'Image verified', image });
+        if (!image) {
+            return c.json({ error: 'Image not found' }, 404);
+        }
+
+        await logDetectionAudit(user.userId, normalizedStatus === 'confirmed' ? 'detection_confirmed' : 'detection_rejected', {
+            image_id: id,
+            camera_id: image.camera_id,
+            animal: image.detected_animal,
+            confidence_percent: image.detection_confidence,
+            source: 'image_verify',
+        });
+
+        return c.json({ message: 'Image verified', image: normalizeImageRow(image) });
     } catch (error) {
         console.error('Verify image error:', error);
         return c.json({ error: 'Failed to verify image' }, 500);
@@ -228,10 +282,10 @@ images.post('/upload', requireAuth, async (c) => {
         // Run animal detection with confidence scoring
         const prediction = await predictAnimal(imageBuffer, fileName);
         
-        // Determine auto-approval based on confidence (≥90%)
-        const confidence = prediction.score || 0;
-        const autoApproved = confidence >= 0.90;
-        const detectionStatus = autoApproved ? 'auto_approved' : 'pending_review';
+        const confidence = normalizeConfidencePercent(prediction.score);
+        const autoApproved = confidence >= AUTO_APPROVE_CONFIDENCE;
+        const confirmationStatus: CanonicalStatus = autoApproved ? 'confirmed' : 'pending_confirmation';
+        const approvalMethod = autoApproved ? 'auto_approved' : null;
 
         const imageId = randomUUID();
         const filePath = `/images/${cameraId}/${new Date().toISOString().split('T')[0]}/${imageId}.jpg`;
@@ -242,10 +296,12 @@ images.post('/upload', requireAuth, async (c) => {
                 id, camera_id, file_path, original_filename,
                 file_size, mime_type, uploaded_at, status,
                 detected_animal, detected_animal_scientific,
-                detection_confidence, 
+                detection_confidence,
                 auto_approved,
-                detection_status,
-                ml_metadata,
+                approval_method,
+                confirmation_status,
+                confirmed_at,
+                metadata,
                 uploaded_by
             ) VALUES (
                 ${imageId},
@@ -260,13 +316,21 @@ images.post('/upload', requireAuth, async (c) => {
                 ${prediction.scientific_name},
                 ${confidence},
                 ${autoApproved},
-                ${detectionStatus}::"detection_status_enum",
+                ${approvalMethod},
+                ${confirmationStatus},
+                ${autoApproved ? new Date() : null},
                 ${sql.json({
-                    caption: prediction.caption,
-                    confidence_score: confidence,
+                    ai_prediction: {
+                        label: prediction.label,
+                        scientific_name: prediction.scientific_name,
+                        confidence,
+                        confidence_unit: 'percent',
+                        caption: prediction.caption,
+                        method: prediction.method,
+                        full_metadata: prediction.metadata,
+                        model_version: 'blip-v1'
+                    },
                     auto_approved: autoApproved,
-                    method: prediction.method,
-                    full_metadata: prediction.metadata,
                     processed_at: new Date().toISOString()
                 })},
                 ${user.userId}
@@ -274,22 +338,38 @@ images.post('/upload', requireAuth, async (c) => {
             RETURNING 
                 id, camera_id, file_path, original_filename,
                 detected_animal, detected_animal_scientific,
-                detection_confidence, auto_approved, detection_status,
+                detection_confidence, auto_approved, approval_method,
+                confirmation_status,
                 uploaded_at
         `;
+
+        await logDetectionAudit(
+            user.userId,
+            autoApproved ? 'detection_auto_approved' : 'detection_pending_confirmation',
+            {
+                image_id: image.id,
+                camera_id: cameraId,
+                animal: prediction.label,
+                confidence_percent: confidence,
+                confidence_unit: 'percent',
+                confirmation_status: confirmationStatus,
+                approval_method: approvalMethod,
+                model: 'blip',
+                source: 'legacy_images_upload',
+            }
+        );
 
         const autoApprovedMsg = autoApproved 
             ? '✅ AUTO-APPROVED' 
             : '⏳ Pending review';
 
-        console.log(`${autoApprovedMsg}: ${prediction.label} (${(confidence * 100).toFixed(2)}%)`);
+        console.log(`${autoApprovedMsg}: ${prediction.label} (${confidence}%)`);
 
         return c.json({
             image: {
-                ...image,
-                detection_confidence: parseFloat(image.detection_confidence),
+                ...normalizeImageRow(image),
                 autoApproved: image.auto_approved,
-                detectionStatus: image.detection_status
+                detectionStatus: image.confirmation_status
             }
         }, 201);
 

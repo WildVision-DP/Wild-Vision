@@ -1,4 +1,9 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
+import {
+    getDetectionReviewStatus,
+    isAutoApprovedDetection,
+    normalizeConfidence,
+} from '@/utils/detections';
 
 interface CameraAnalytics {
     camera: {
@@ -56,8 +61,10 @@ interface MapComponentProps {
         detected_animal: string;
         detected_animal_scientific: string;
         detection_confidence: number;
-        auto_approved: boolean;
-        detection_status: 'auto_approved' | 'manual_approved' | 'pending_review' | 'rejected';
+        auto_approved?: boolean;
+        approval_method?: string | null;
+        confirmation_status?: 'pending_confirmation' | 'confirmed' | 'rejected';
+        detection_status?: 'auto_approved' | 'manual_approved' | 'pending_review' | 'rejected';
         latitude?: number;
         longitude?: number;
         camera_latitude?: number;
@@ -450,11 +457,12 @@ export default function MapComponent({
             const position = { lat, lng };
             bounds.extend(position);
 
-            // Color-code based on status
-            const statusColor = detection.auto_approved ? '#10b981' : // Green for auto-approved
-                                detection.detection_status === 'manual_approved' ? '#3b82f6' : // Blue for manual-approved
-                                detection.detection_status === 'pending_review' ? '#f59e0b' : // Amber for pending
-                                '#ef4444'; // Red for rejected
+            const reviewStatus = getDetectionReviewStatus(detection);
+            const confidence = normalizeConfidence(detection.detection_confidence);
+            const statusColor = reviewStatus === 'auto_approved' ? '#10b981' :
+                                reviewStatus === 'manual_confirmed' ? '#3b82f6' :
+                                reviewStatus === 'pending_confirmation' ? '#f59e0b' :
+                                '#ef4444';
 
             let marker: any;
 
@@ -488,10 +496,10 @@ export default function MapComponent({
                 });
             }
 
-            const statusLabel = detection.auto_approved ? '✓ Auto-Approved' :
-                               detection.detection_status === 'manual_approved' ? '✓ Verified' :
-                               detection.detection_status === 'pending_review' ? '⏳ Pending Review' :
-                               '✗ Rejected';
+            const normalizedStatusLabel = isAutoApprovedDetection(detection) ? 'Auto-Approved' :
+                               reviewStatus === 'manual_confirmed' ? 'Verified' :
+                               reviewStatus === 'pending_confirmation' ? 'Pending Review' :
+                               'Rejected';
 
             const thumbnailHtml = detection.thumbnail_path 
                 ? `<img src="/api/proxy/${detection.thumbnail_path}" alt="${detection.detected_animal}" style="width: 100px; height: 100px; object-fit: cover; border-radius: 4px; margin-bottom: 8px;" />`
@@ -505,13 +513,13 @@ export default function MapComponent({
                         <p style="margin: 0 0 8px 0; font-size: 12px; color: #6b7280; font-style: italic;">${detection.detected_animal_scientific || ''}</p>
                         
                         <div style="background: ${statusColor}; color: white; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; margin-bottom: 8px; display: inline-block;">
-                            ${statusLabel}
+                            ${normalizedStatusLabel}
                         </div>
                         
                         <div style="font-size: 12px; color: #555; line-height: 1.6; border-top: 1px solid #e5e7eb; padding-top: 8px; margin-top: 8px;">
-                            <div><strong>Confidence:</strong> ${Math.round(detection.detection_confidence * 100)}%</div>
+                            <div><strong>Confidence:</strong> ${confidence}%</div>
                             <div style="width: 100%; background: #e5e7eb; border-radius: 4px; height: 6px; margin-top: 4px; overflow: hidden;">
-                                <div  style="background: ${statusColor}; height: 100%; width: ${detection.detection_confidence * 100}%;"></div>
+                                <div  style="background: ${statusColor}; height: 100%; width: ${confidence}%;"></div>
                             </div>
                             ${detection.taken_at ? `<div style="margin-top: 8px; font-size: 11px; color: #6b7280;">📅 ${new Date(detection.taken_at).toLocaleDateString()}</div>` : ''}
                         </div>

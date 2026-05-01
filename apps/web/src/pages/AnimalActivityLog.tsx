@@ -80,8 +80,12 @@ export default function AnimalActivityLog() {
             const confirmedData = await confirmedResponse.json();
             const pendingData = await pendingResponse.json();
             
-            const confirmed = Array.isArray(confirmedData) ? confirmedData : confirmedData.data || [];
-            const pending = (Array.isArray(pendingData) ? pendingData : pendingData.data || []).map((d: any) => ({
+            const confirmed = Array.isArray(confirmedData)
+                ? confirmedData
+                : confirmedData.images || confirmedData.data || [];
+            const pending = (Array.isArray(pendingData)
+                ? pendingData
+                : pendingData.images || pendingData.data || []).map((d: any) => ({
                 ...d,
                 confirmation_status: 'pending_confirmation'
             }));

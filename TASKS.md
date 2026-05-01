@@ -2,7 +2,7 @@
 
 **Project:** WildVision - Wildlife Surveillance & Movement Analytics Platform  
 **Client:** Forest Department of India  
-**Tech Stack:** Bun.js · React · **shadcn/ui** · Google Maps API · PostgreSQL + PostGIS · MinIO · YOLOv8 · Flower FL · Docker  
+**Tech Stack:** Bun.js · React · **shadcn/ui** · Google Maps API · PostgreSQL + PostGIS · MinIO · BLIP/FastAPI ML Service · Docker  
 **Total Modules:** 12 | **Project Start:** Jan 30, 2026  
 **Legend:** `[ ]` Not Started | `[/]` In Progress | `[x]` Done | P0 = Critical | P1 = High | P2 = Medium
 
@@ -38,7 +38,7 @@
 
 **Subtasks:**
 - [x] 0.1.1: Initialize Git repository with main, dev, release/* branches
-- [x] 0.1.2: Create `apps/api` (Bun.js), `apps/web` (React), `apps/ai-node` (Bun + YOLOv8 + Flower)
+- [x] 0.1.2: Create `apps/api` (Bun.js), `apps/web` (React), `apps/ai-node` placeholder, and `apps/ml-service` (FastAPI + BLIP)
 - [x] 0.1.3: Create `infra/docker` for docker-compose and k8s manifests
 - [x] 0.1.4: Create `infra/db` for Postgres & MinIO schemas
 - [x] 0.1.5: Set up monorepo tooling (Turborepo)
@@ -274,71 +274,76 @@
 
 ## 🧠 Module 4 – AI Inference & Verification Pipeline
 
-### 4.1 Local AI (Edge Node)
+### 4.1 ML Inference Service
 
-**Task 4.1.1** - YOLOv8 Model Setup | **P0** | **Status:** [ ] Not Started
+**Implementation Decision:** YOLOv8/ONNX was replaced for the current project iteration with a FastAPI BLIP image-captioning service. YOLO-style object detection, bounding boxes, and fine-tuning remain deferred unless the project later requires detection boxes instead of image-level animal labels.
 
-- [ ] **Task 4.1.1.1**: Download YOLOv8 pretrained model (COCO or custom)
-- [ ] **Task 4.1.1.2**: Fine-tune model on Indian wildlife dataset
-- [ ] **Task 4.1.1.3**: Add species classes (tiger, leopard, elephant, deer, etc.)
-- [ ] **Task 4.1.1.4**: Add human and vehicle detection classes
-- [ ] **Task 4.1.1.5**: Train model on night IR images
-- [ ] **Task 4.1.1.6**: Export model to ONNX format for inference
-- [ ] **Task 4.1.1.7**: Set up ONNX Runtime in ai-node
-- [ ] **Task 4.1.1.8**: Create model loader service
-- [ ] **Task 4.1.1.9**: Implement image preprocessing pipeline
-- [ ] **Task 4.1.1.10**: Implement post-processing (NMS, confidence filtering)
-- [ ] **Task 4.1.1.11**: Optimize inference for CPU/GPU
-- [ ] **Task 4.1.1.12**: Add model versioning and hot-swapping
+**Task 4.1.1** - BLIP Model Integration | **P0** | **Status:** [x] Complete
+
+- [x] **Task 4.1.1.1**: Create `apps/ml-service` FastAPI service
+- [x] **Task 4.1.1.2**: Add `/health` endpoint for service readiness checks
+- [x] **Task 4.1.1.3**: Add `/predict` multipart image endpoint
+- [x] **Task 4.1.1.4**: Integrate `Salesforce/blip-image-captioning-base`
+- [x] **Task 4.1.1.5**: Load BLIP lazily so health checks stay responsive during model warmup
+- [x] **Task 4.1.1.6**: Extract animal names from BLIP captions using wildlife keyword matching
+- [x] **Task 4.1.1.7**: Return animal label, confidence, caption, method, and metadata from ML service
+- [x] **Task 4.1.1.8**: Add fast mock ML service for local development/testing
+- [x] **Task 4.1.1.9**: Connect API upload flow to `ML_SERVICE_URL`
+- [x] **Task 4.1.1.10**: Persist detected animal, scientific name, confidence, and ML metadata on image records
+- [x] **Task 4.1.1.11**: Generate thumbnails for uploaded images after inference
+- [x] **Task 4.1.1.12**: Add ML service to Docker compose with model/cache volumes
 
 ---
 
-**Task 4.1.2** - Confidence-Based Logic | **P0** | **Status:** [ ] Not Started
+**Task 4.1.2** - Confidence-Based Detection Workflow | **P0** | **Status:** [/] In Progress
 
-- [ ] **Task 4.1.2.1**: Define confidence threshold (≥ 0.85 for auto-tag)
-- [ ] **Task 4.1.2.2**: Create detections table (image_id, species, confidence, bbox)
-- [ ] **Task 4.1.2.3**: Add status field (auto_approved, pending_review, verified)
-- [ ] **Task 4.1.2.4**: Implement auto-approval logic (confidence ≥ 0.85)
-- [ ] **Task 4.1.2.5**: Queue low-confidence detections for manual review
-- [ ] **Task 4.1.2.6**: Create GET /detections/pending endpoint
-- [ ] **Task 4.1.2.7**: Add filtering by confidence range
-- [ ] **Task 4.1.2.8**: Log all auto-approvals in audit trail
-- [ ] **Task 4.1.2.9**: Create metrics for auto-approval rate
-- [ ] **Task 4.1.2.10**: Implement confidence calibration
+- [x] **Task 4.1.2.1**: Define configurable confidence threshold via `ML_AUTO_APPROVE_CONFIDENCE`
+- [x] **Task 4.1.2.2**: Store detection result directly on `images` records
+- [x] **Task 4.1.2.3**: Add confirmation status fields (`pending_confirmation`, `confirmed`, `rejected`)
+- [x] **Task 4.1.2.4**: Implement auto-approval logic for high-confidence detections
+- [x] **Task 4.1.2.5**: Queue low-confidence detections for manual confirmation/review
+- [x] **Task 4.1.2.6**: Add admin review endpoints under `/admin/reviews`
+- [x] **Task 4.1.2.7**: Add filtering by confidence range in admin review API
+- [x] **Task 4.1.2.8**: Normalize backend/frontend status naming (`pending_confirmation` vs `pending_review`, `confirmed` vs `manual_approved`)
+- [x] **Task 4.1.2.9**: Normalize confidence units across API and UI (0-1 vs 0-100)
+- [x] **Task 4.1.2.10**: Log auto-approvals and manual review actions consistently in audit trail
+- [x] **Task 4.1.2.11**: Add model/inference metrics for auto-approval rate and failure rate
+- [x] **Task 4.1.2.12**: Document current BLIP limitations and future YOLO/object-detection upgrade path
 
 ---
 
 ### 4.2 Human-in-the-Loop
 
-**Task 4.2.1** - Verification UI (Range Officer) | **P0** | **Status:** [ ] Not Started
+**Task 4.2.1** - Verification UI (Range Officer/Admin) | **P0** | **Status:** [x] Complete
 
-- [ ] **Task 4.2.1.1**: Create verification dashboard page
-- [ ] **Task 4.2.1.2**: Display pending detections in grid view
-- [ ] **Task 4.2.1.3**: Implement side-by-side comparison view
-- [ ] **Task 4.2.1.4**: Show detection bounding boxes on image
-- [ ] **Task 4.2.1.5**: Display AI prediction with confidence score
-- [ ] **Task 4.2.1.6**: Add species dropdown for correction
-- [ ] **Task 4.2.1.7**: Add Approve/Reject/Edit buttons
-- [ ] **Task 4.2.1.8**: Implement keyboard shortcuts (A=approve, R=reject, E=edit)
-- [ ] **Task 4.2.1.9**: Add notes field for verification comments
-- [ ] **Task 4.2.1.10**: Show verification progress (X/Y reviewed)
-- [ ] **Task 4.2.1.11**: Add filters (date, camera, species, confidence)
-- [ ] **Task 4.2.1.12**: Implement pagination or infinite scroll
+- [x] **Task 4.2.1.1**: Create admin review dashboard page
+- [x] **Task 4.2.1.2**: Display pending detections in review list
+- [x] **Task 4.2.1.3**: Implement side-by-side comparison view
+- [x] **Task 4.2.1.4**: Show detection bounding boxes when detector metadata exists, with BLIP unavailable state
+- [x] **Task 4.2.1.5**: Display AI prediction with confidence score
+- [x] **Task 4.2.1.6**: Add editable species/animal name field
+- [x] **Task 4.2.1.7**: Add Approve/Reject/Reassess actions
+- [x] **Task 4.2.1.8**: Implement keyboard shortcuts (A=approve, R=reject, E=edit)
+- [x] **Task 4.2.1.9**: Add notes/reason support for review actions
+- [x] **Task 4.2.1.10**: Show verification progress (X/Y reviewed)
+- [x] **Task 4.2.1.11**: Add filters (animal, status, confidence, sort)
+- [x] **Task 4.2.1.12**: Implement pagination
+- [x] **Task 4.2.1.13**: Fix review UI/API status mismatch and thumbnail route mismatch
 
 ---
 
-**Task 4.2.2** - Audit Trail | **P0** | **Status:** [ ] Not Started
+**Task 4.2.2** - Audit Trail | **P0** | **Status:** [x] Complete
 
-- [ ] **Task 4.2.2.1**: Create verifications table (detection_id, officer_id, action, timestamp)
-- [ ] **Task 4.2.2.2**: Log who verified each detection
-- [ ] **Task 4.2.2.3**: Log what changed (original vs corrected species)
-- [ ] **Task 4.2.2.4**: Log when verification occurred
-- [ ] **Task 4.2.2.5**: Store verification reason/notes
-- [ ] **Task 4.2.2.6**: Create GET /detections/{id}/audit endpoint
-- [ ] **Task 4.2.2.7**: Display audit history in UI
-- [ ] **Task 4.2.2.8**: Add undo functionality for recent verifications
-- [ ] **Task 4.2.2.9**: Create verification analytics (accuracy, speed)
-- [ ] **Task 4.2.2.10**: Generate verification reports for officers
+- [x] **Task 4.2.2.1**: Keep current review state on `images` and use `audit_logs` as immutable verification history
+- [x] **Task 4.2.2.2**: Store who confirmed/reviewed each image (`confirmed_by`)
+- [x] **Task 4.2.2.3**: Log what changed (original vs corrected species)
+- [x] **Task 4.2.2.4**: Store when verification occurred (`confirmed_at`)
+- [x] **Task 4.2.2.5**: Store verification reason/notes in image metadata
+- [x] **Task 4.2.2.6**: Create GET /detections/{id}/audit endpoint
+- [x] **Task 4.2.2.7**: Display audit history in UI
+- [x] **Task 4.2.2.8**: Add undo functionality for recent verifications
+- [x] **Task 4.2.2.9**: Create verification analytics (accuracy, speed)
+- [x] **Task 4.2.2.10**: Generate verification reports for officers
 
 ---
 
@@ -664,11 +669,11 @@
 
 **Total Modules:** 12  
 **Total Tasks:** 100+  
-**Critical Path:** Module 0 → Module 1 → Module 2 → Module 3 → Module 4 → Module 5  
+**Critical Path:** Module 0 → Module 1 → Module 2 → Module 3 → Module 4 cleanup/stabilization → Module 6/7 analytics and maps  
 **Deployment Model:** Edge (Range HQ) + Central (Forest HQ)  
-**Key Differentiators:** Federated Learning, PostGIS geospatial, Offline-first, Field-optimized
+**Key Differentiators:** BLIP-assisted wildlife labeling, PostGIS geospatial, Offline-first upload, Field-optimized review workflow
 
 ---
 
-**Last Updated:** Jan 30, 2026  
-**Next Review:** Feb 6, 2026
+**Last Updated:** May 1, 2026  
+**Next Review:** After Module 4 cleanup tasks are resolved

@@ -61,6 +61,21 @@ type CameraRow = {
     circle_name: string | null;
 };
 
+async function logDetectionAudit(
+    userId: string | null,
+    action: string,
+    metadata: Record<string, unknown>
+) {
+    try {
+        await sql`
+            INSERT INTO audit_logs (user_id, action, metadata)
+            VALUES (${userId}, ${action}, ${sql.json(metadata as any)})
+        `;
+    } catch (err) {
+        console.warn('[audit] Failed to write detection audit log:', err);
+    }
+}
+
 async function getCameraWithHierarchy(camera_id: string): Promise<CameraRow | undefined> {
     const isUUID =
         /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
@@ -254,6 +269,22 @@ async function runMlAndPersist(
         RETURNING id, file_path, detected_animal, detection_confidence, thumbnail_path, confirmation_status, confirmed_at
     `;
 
+    await logDetectionAudit(
+        user.userId,
+        isHighConfidence ? 'detection_auto_approved' : 'detection_pending_confirmation',
+        {
+            image_id: image.id,
+            camera_id: actualCameraId,
+            animal: resolvedDetection.label,
+            confidence_percent: detectionConfidence,
+            confidence_unit: 'percent',
+            confirmation_status: confirmationStatus,
+            approval_method: approvalMethod,
+            model: 'blip',
+            fallback: !hasValidDetection,
+        }
+    );
+
     return c.json(
         {
             detection: {
@@ -439,7 +470,7 @@ upload.post('/confirm', requireAuth, requireRoleLevel(1), async (c) => {
         if (confirmed) {
             // If a new animal name is provided, update it; otherwise preserve the existing ML-detected name
             if (detected_animal?.trim()) {
-                await sql`
+                const [updated] = await sql`
                     UPDATE images
                     SET 
                         confirmation_status = 'confirmed',
@@ -448,9 +479,17 @@ upload.post('/confirm', requireAuth, requireRoleLevel(1), async (c) => {
                         status = 'processed',
                         detected_animal = ${detected_animal.trim()}
                     WHERE id = ${image_id}
+                    RETURNING id, detected_animal, detection_confidence, camera_id
                 `;
+                await logDetectionAudit(user.userId, 'detection_confirmed', {
+                    image_id,
+                    camera_id: updated?.camera_id,
+                    animal: updated?.detected_animal,
+                    confidence_percent: updated?.detection_confidence,
+                    edited_animal: detected_animal.trim(),
+                });
             } else {
-                await sql`
+                const [updated] = await sql`
                     UPDATE images
                     SET 
                         confirmation_status = 'confirmed',
@@ -458,7 +497,14 @@ upload.post('/confirm', requireAuth, requireRoleLevel(1), async (c) => {
                         confirmed_by = ${user.userId},
                         status = 'processed'
                     WHERE id = ${image_id}
+                    RETURNING id, detected_animal, detection_confidence, camera_id
                 `;
+                await logDetectionAudit(user.userId, 'detection_confirmed', {
+                    image_id,
+                    camera_id: updated?.camera_id,
+                    animal: updated?.detected_animal,
+                    confidence_percent: updated?.detection_confidence,
+                });
             }
             console.log('[confirm] Detection confirmed:', image_id, 'Animal:', detected_animal);
 
@@ -473,7 +519,18 @@ upload.post('/confirm', requireAuth, requireRoleLevel(1), async (c) => {
                 detected_animal: detected_animal || 'confirmed with original',
             });
         } else {
-            await sql`DELETE FROM images WHERE id = ${image_id}`;
+            const [deleted] = await sql`
+                DELETE FROM images
+                WHERE id = ${image_id}
+                RETURNING id, camera_id, detected_animal, detection_confidence
+            `;
+            await logDetectionAudit(user.userId, 'detection_rejected', {
+                image_id,
+                camera_id: deleted?.camera_id,
+                animal: deleted?.detected_animal,
+                confidence_percent: deleted?.detection_confidence,
+                source: 'upload_confirmation',
+            });
             console.log('[confirm] Detection rejected:', image_id);
 
             return c.json({

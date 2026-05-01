@@ -27,9 +27,12 @@ async function ensureImagesMlFlowColumns() {
         'ALTER TABLE images ADD COLUMN IF NOT EXISTS detected_animal TEXT',
         'ALTER TABLE images ADD COLUMN IF NOT EXISTS detected_animal_scientific TEXT',
         'ALTER TABLE images ADD COLUMN IF NOT EXISTS detection_confidence INTEGER',
-        "ALTER TABLE images ADD COLUMN IF NOT EXISTS confirmation_status VARCHAR(40) DEFAULT 'pending'",
+        "ALTER TABLE images ADD COLUMN IF NOT EXISTS confirmation_status VARCHAR(40) DEFAULT 'pending_confirmation'",
         'ALTER TABLE images ADD COLUMN IF NOT EXISTS confirmed_at TIMESTAMP',
         'ALTER TABLE images ADD COLUMN IF NOT EXISTS confirmed_by UUID',
+        'ALTER TABLE images ADD COLUMN IF NOT EXISTS auto_approved BOOLEAN DEFAULT false',
+        'ALTER TABLE images ADD COLUMN IF NOT EXISTS approval_method VARCHAR(40)',
+        'ALTER TABLE images ADD COLUMN IF NOT EXISTS ml_metadata JSONB',
         "ALTER TABLE images ADD COLUMN IF NOT EXISTS metadata_status VARCHAR(32) DEFAULT 'pending'",
         'ALTER TABLE images ADD COLUMN IF NOT EXISTS metadata_processed_at TIMESTAMP',
         'ALTER TABLE images ADD COLUMN IF NOT EXISTS geo_consistent BOOLEAN',
@@ -93,8 +96,7 @@ export async function initializeDatabase() {
                 for (const statement of statements) {
                     if (statement) {
                         try {
-                            const result = await sql.unsafe(statement);
-                            // Statement executed successfully
+                            await sql.unsafe(statement);
                         } catch (e) {
                             // Log the error but continue
                             const errorMsg = e instanceof Error ? e.message : String(e);
