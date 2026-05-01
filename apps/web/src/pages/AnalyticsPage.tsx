@@ -25,6 +25,8 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { AnalyticsCharts } from '@/components/analytics/AnalyticsCharts';
+import { PageHeader } from '@/components/layout/PageHeader';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -287,26 +289,27 @@ export default function AnalyticsPage() {
 
     return (
         <div className="space-y-6">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div>
-                    <h1 className="text-3xl font-bold text-gray-900 tracking-tight flex items-center gap-3">
-                        <BarChart3 className="w-8 h-8 text-green-700" />
-                        AI Analytics Dashboard
-                    </h1>
-                    <p className="text-gray-500 mt-1">
-                        Comprehensive camera performance metrics and deep intelligence reports.
-                    </p>
-                </div>
-                <Button 
-                    onClick={exportStatsPDF} 
-                    className="bg-green-700 hover:bg-green-800 text-white flex items-center gap-2"
-                >
-                    <Download className="w-4 h-4" />
-                    Export Global Summary
-                </Button>
-            </div>
+            <PageHeader
+                eyebrow="Reports"
+                title="AI Analytics Dashboard"
+                description="Review camera performance, detection volume, confidence trends, and exportable intelligence reports."
+                actions={
+                    <Button onClick={exportStatsPDF} className="flex items-center gap-2">
+                        <Download className="w-4 h-4" />
+                        Export Global Summary
+                    </Button>
+                }
+            />
 
             {/* Quick Stats Banner */}
+            <section className="workspace-band p-4">
+                <div className="mb-4 flex items-center gap-3">
+                    <BarChart3 className="h-5 w-5 text-primary" />
+                    <div>
+                        <p className="text-sm font-semibold">Reporting workspace</p>
+                        <p className="text-xs text-muted-foreground">30-day camera analytics and verification health.</p>
+                    </div>
+                </div>
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 {[
                     { label: 'Avg AI Confidence', value: `${(cameras.reduce((s, c) => s + c.average_confidence, 0) / (cameras.length || 1)).toFixed(1)}%`, icon: <CheckCircle2 className="text-green-600" />, desc: 'System-wide accuracy' },
@@ -314,31 +317,34 @@ export default function AnalyticsPage() {
                     { label: 'Active Deployment', value: cameras.filter(c => c.status === 'active').length, icon: <Camera className="text-purple-600" />, desc: 'Cameras currently live' },
                     { label: 'Pending Review', value: cameras.reduce((s, c) => s + c.pending_detections, 0).toLocaleString(), icon: <Clock className="text-amber-600" />, desc: 'Awaiting verification' },
                 ].map((stat, i) => (
-                    <Card key={i} className="border-none bg-white shadow-sm overflow-hidden relative group">
+                    <Card key={i} className="relative overflow-hidden border bg-card shadow-sm">
                         <div className="absolute inset-y-0 left-0 w-1 bg-green-500 opacity-0 group-hover:opacity-100 transition-opacity"></div>
                         <CardHeader className="p-4 pb-0">
-                            <div className="bg-gray-50 w-8 h-8 rounded-lg flex items-center justify-center mb-1">
+                            <div className="bg-muted w-8 h-8 rounded-lg flex items-center justify-center mb-1">
                                 {stat.icon}
                             </div>
-                            <p className="text-xs font-semibold text-gray-500 uppercase tracking-widest">{stat.label}</p>
+                            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">{stat.label}</p>
                         </CardHeader>
                         <CardContent className="p-4 pt-1">
-                            <div className="text-2xl font-bold text-gray-900">{stat.value}</div>
-                            <p className="text-[10px] text-gray-400 mt-0.5">{stat.desc}</p>
+                            <div className="text-2xl font-bold text-foreground">{stat.value}</div>
+                            <p className="text-[10px] text-muted-foreground mt-0.5">{stat.desc}</p>
                         </CardContent>
                     </Card>
                 ))}
             </div>
+            </section>
+
+            <AnalyticsCharts cameras={filteredCameras} />
 
             {/* Filters Area */}
-            <Card className="border-gray-200 shadow-sm border">
+            <Card className="workspace-panel">
                 <CardContent className="p-4">
                     <div className="flex flex-col md:flex-row gap-4">
                         <div className="relative flex-1">
                             <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
                             <Input 
                                 placeholder="Search camera name or ID..." 
-                                className="pl-9 bg-gray-50 border-gray-100"
+                                className="pl-9 bg-background"
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
                             />
@@ -347,7 +353,7 @@ export default function AnalyticsPage() {
                             <select 
                                 value={statusFilter} 
                                 onChange={(e) => setStatusFilter(e.target.value)}
-                                className="h-10 w-[140px] rounded-md border border-gray-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                                className="h-10 w-[140px] rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                             >
                                 <option value="all">All Status</option>
                                 <option value="active">Active</option>
@@ -358,7 +364,7 @@ export default function AnalyticsPage() {
                             <select 
                                 value={divisionFilter} 
                                 onChange={(e) => setDivisionFilter(e.target.value)}
-                                className="h-10 w-[140px] rounded-md border border-gray-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                                className="h-10 w-[140px] rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                             >
                                 <option value="all">All Divisions</option>
                                 {divisions.map(d => (
@@ -371,32 +377,32 @@ export default function AnalyticsPage() {
             </Card>
 
             {/* Analytics Table */}
-            <Card className="border-gray-200 shadow-sm overflow-hidden border">
+            <Card className="workspace-table-wrap">
                 <div className="overflow-x-auto">
                     <table className="w-full text-left border-collapse">
-                        <thead className="bg-gray-50 border-b border-gray-100">
+                        <thead className="bg-muted/60 border-b">
                             <tr>
-                                <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider w-[240px] cursor-pointer hover:bg-gray-100" onClick={() => toggleSort('camera_name')}>
+                                <th className="px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider w-[240px] cursor-pointer hover:bg-muted" onClick={() => toggleSort('camera_name')}>
                                     <div className="flex items-center gap-1">
                                         Camera Name {sortBy === 'camera_name' && <ArrowUpDown className="w-3 h-3 text-green-600" />}
                                     </div>
                                 </th>
-                                <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
-                                <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Division</th>
-                                <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider text-right cursor-pointer hover:bg-gray-100" onClick={() => toggleSort('total_detections')}>
+                                <th className="px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Status</th>
+                                <th className="px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Division</th>
+                                <th className="px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider text-right cursor-pointer hover:bg-muted" onClick={() => toggleSort('total_detections')}>
                                     <div className="flex items-center justify-end gap-1">
                                         Detections (30d) {sortBy === 'total_detections' && <ArrowUpDown className="w-3 h-3 text-green-600" />}
                                     </div>
                                 </th>
-                                <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider text-right cursor-pointer hover:bg-gray-100" onClick={() => toggleSort('average_confidence')}>
+                                <th className="px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider text-right cursor-pointer hover:bg-muted" onClick={() => toggleSort('average_confidence')}>
                                     <div className="flex items-center justify-end gap-1">
                                         AI Confidence {sortBy === 'average_confidence' && <ArrowUpDown className="w-3 h-3 text-green-600" />}
                                     </div>
                                 </th>
-                                <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider text-right">Actions</th>
+                                <th className="px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider text-right">Actions</th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-gray-100">
+                        <tbody className="divide-y divide-border">
                             {loading ? (
                                 <tr>
                                     <td colSpan={6} className="h-64 text-center">

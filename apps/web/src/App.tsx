@@ -1,4 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { useEffect } from 'react';
 import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
 import CamerasPage from './pages/CamerasPage';
@@ -13,9 +14,14 @@ import AnalyticsPage from './pages/AnalyticsPage';
 import ProtectedRoute from './components/ProtectedRoute';
 import Layout from './components/Layout';
 import ErrorBoundary from './components/ErrorBoundary';
+import { applyTheme, getStoredTheme } from './lib/theme';
 import './index.css';
 
 function App() {
+    useEffect(() => {
+        applyTheme(getStoredTheme());
+    }, []);
+
     return (
         <BrowserRouter>
             <Routes>

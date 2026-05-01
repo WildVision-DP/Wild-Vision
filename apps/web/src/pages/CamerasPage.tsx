@@ -1,14 +1,20 @@
 import { useState, useEffect } from 'react';
 import MapComponent from '../components/MapComponent';
 import { Button } from '@/components/ui/button';
-import { Plus, Edit2, Trash2, TestTube, Settings, Image as ImageIcon, Search, X, Map, List, Printer } from 'lucide-react';
+import { Plus, Edit2, Trash2, TestTube, Settings, Image as ImageIcon, Search, X, Map, List, Printer, Camera as CameraIcon } from 'lucide-react';
 import CameraGallery from '@/components/CameraGallery';
 import Modal from '@/components/ui/Modal';
 import CameraForm from '@/components/CameraForm';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
-import AlertDialog from '@/components/ui/AlertDialog';
 import MapDiagnostics from '../components/MapDiagnostics';
 import { defaultTestCameras, testGoogleMapsAPI } from '../utils/mapTest';
+import { PageHeader } from '@/components/layout/PageHeader';
+import { DataToolbar, EmptyState, MetricCard, StatusBadge } from '@/components/common';
+import { Card, CardContent } from '@/components/ui/card';
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { Separator } from '@/components/ui/separator';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { toast } from 'sonner';
 
 export default function CamerasPage() {
     const [cameras, setCameras] = useState<any[]>([]);
@@ -17,9 +23,9 @@ export default function CamerasPage() {
     const [editingCamera, setEditingCamera] = useState<any>(null);
     const [viewGalleryId, setViewGalleryId] = useState<string | null>(null);
     const [deleteConfirm, setDeleteConfirm] = useState<{ isOpen: boolean; cameraId: string | null }>({ isOpen: false, cameraId: null });
-    const [alert, setAlert] = useState<{ isOpen: boolean; title: string; message: string; variant: 'error' | 'success' }>({ isOpen: false, title: '', message: '', variant: 'error' });
     const [testMode, setTestMode] = useState(false);
     const [showDiagnostics, setShowDiagnostics] = useState(false);
+    const [selectedCamera, setSelectedCamera] = useState<any | null>(null);
     
     // Tab state
     const [activeTab, setActiveTab] = useState<'map' | 'list'>('map');
@@ -87,12 +93,12 @@ export default function CamerasPage() {
                 const errorText = await response.text();
                 console.error('Failed to fetch cameras - Response:', errorText);
                 setCameras([]);
-                setAlert({ isOpen: true, title: 'Error', message: 'Failed to load camera data', variant: 'error' });
+                toast.error('Failed to load camera data');
             }
         } catch (error) {
             console.error('Failed to fetch cameras:', error);
             setCameras([]);
-            setAlert({ isOpen: true, title: 'Network Error', message: 'Unable to connect to server', variant: 'error' });
+            toast.error('Unable to connect to server');
         } finally {
             setLoading(false);
         }
@@ -172,7 +178,7 @@ export default function CamerasPage() {
             if (response.ok) {
                 await fetchCameras();
                 closeModal();
-                setAlert({ isOpen: true, title: 'Success', message: 'Camera created successfully', variant: 'success' });
+                toast.success('Camera created successfully');
             } else {
                 let errorMessage = 'Failed to create camera';
                 try {
@@ -182,11 +188,11 @@ export default function CamerasPage() {
                     const text = await response.text();
                     errorMessage = text || errorMessage;
                 }
-                setAlert({ isOpen: true, title: 'Error', message: errorMessage, variant: 'error' });
+                toast.error(errorMessage);
             }
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Network error. Please try again.';
-            setAlert({ isOpen: true, title: 'Error', message: errorMessage, variant: 'error' });
+            toast.error(errorMessage);
         }
     };
 
@@ -212,7 +218,7 @@ export default function CamerasPage() {
                 console.log('CamerasPage: Update successful:', responseData);
                 await fetchCameras();
                 closeModal();
-                setAlert({ isOpen: true, title: 'Success', message: 'Camera updated successfully', variant: 'success' });
+                toast.success('Camera updated successfully');
             } else {
                 let errorMessage = 'Failed to update camera';
                 try {
@@ -223,12 +229,12 @@ export default function CamerasPage() {
                     errorMessage = text || errorMessage;
                 }
                 console.error('CamerasPage: Update failed:', errorMessage);
-                setAlert({ isOpen: true, title: 'Error', message: errorMessage, variant: 'error' });
+                toast.error(errorMessage);
             }
         } catch (error) {
             console.error('CamerasPage: Update network error:', error);
             const errorMessage = error instanceof Error ? error.message : 'Network error. Please try again.';
-            setAlert({ isOpen: true, title: 'Error', message: errorMessage, variant: 'error' });
+            toast.error(errorMessage);
         }
     };
 
@@ -249,13 +255,13 @@ export default function CamerasPage() {
 
             if (response.ok) {
                 await fetchCameras();
-                setAlert({ isOpen: true, title: 'Success', message: 'Camera deleted successfully', variant: 'success' });
+                toast.success('Camera deleted successfully');
             } else {
                 const error = await response.json();
-                setAlert({ isOpen: true, title: 'Error', message: error.error || 'Failed to delete camera', variant: 'error' });
+                toast.error(error.error || 'Failed to delete camera');
             }
         } catch (error) {
-            setAlert({ isOpen: true, title: 'Error', message: 'Network error. Please try again.', variant: 'error' });
+            toast.error('Network error. Please try again.');
         }
     };
 
@@ -1013,38 +1019,16 @@ export default function CamerasPage() {
     const inactiveCount = filteredCameras.filter((c: any) => c.status === 'inactive').length;
 
     return (
-        <div className="p-6 h-full flex flex-col">
-            <div className="mb-6 flex justify-between items-center">
-                <div>
-                    <h2 className="text-2xl font-bold text-gray-900">Surveillance Units</h2>
-                    <p className="text-sm text-gray-500 mt-1">
-                        {loading ? 'Syncing...' : `${filteredCameras.length} of ${cameras.length} units ${searchQuery || filterStatus !== 'all' || filterDivision !== 'all' ? 'matching filters' : 'online'}`}
-                    </p>
-                </div>
-                <div className="flex items-center gap-4">
-                    <div className="bg-white border border-gray-200 rounded-lg px-4 py-2 shadow-sm">
-                        <div className="flex items-center gap-6 text-sm">
-                            <div className="text-center">
-                                <div className="text-2xl font-bold text-green-700">{activeCount}</div>
-                                <div className="text-xs text-gray-500">Active</div>
-                            </div>
-                            <div className="w-px h-8 bg-gray-200"></div>
-                            <div className="text-center">
-                                <div className="text-2xl font-bold text-yellow-700">{maintenanceCount}</div>
-                                <div className="text-xs text-gray-500">Maintenance</div>
-                            </div>
-                            <div className="w-px h-8 bg-gray-200"></div>
-                            <div className="text-center">
-                                <div className="text-2xl font-bold text-red-700">{inactiveCount}</div>
-                                <div className="text-xs text-gray-500">Inactive</div>
-                            </div>
-                        </div>
-                    </div>
-                    <div className="flex gap-3">
+        <div className="flex h-full flex-col space-y-6">
+            <PageHeader
+                eyebrow="Field Network"
+                title="Surveillance Units"
+                description={loading ? 'Syncing camera inventory.' : `${filteredCameras.length} of ${cameras.length} units ${isFiltered ? 'matching filters' : 'in the network'}.`}
+                actions={
+                    <div className="flex flex-wrap gap-2">
                         <Button
                             onClick={printReport}
                             variant="outline"
-                            className="border-gray-200 text-gray-700 hover:bg-gray-50"
                             title={isFiltered ? `Print ${filteredCameras.length} filtered cameras` : `Print all ${cameras.length} cameras`}
                         >
                             <Printer className="mr-2 h-4 w-4" />
@@ -1054,7 +1038,6 @@ export default function CamerasPage() {
                         <Button
                             onClick={() => setShowDiagnostics(true)}
                             variant="outline"
-                            className="border-gray-200 text-gray-700 hover:bg-gray-50"
                         >
                             <Settings className="mr-2 h-4 w-4" />
                             Diagnostics
@@ -1064,30 +1047,42 @@ export default function CamerasPage() {
                                 onClick={() => {
                                     setTestMode(!testMode);
                                     if (!testMode) {
-                                        setAlert({
-                                            isOpen: true,
-                                            title: 'Test Mode Enabled',
-                                            message: 'Showing sample camera data for map testing',
-                                            variant: 'success'
-                                        });
+                                        toast.success('Test mode enabled. Showing sample camera data for map testing.');
                                     }
                                 }}
                                 variant="outline"
-                                className="border-blue-200 text-blue-700 hover:bg-blue-50"
+                                className="border-blue-200 text-blue-700 hover:bg-blue-50 dark:border-blue-900 dark:text-blue-200 dark:hover:bg-blue-950/40"
                             >
                                 <TestTube className="mr-2 h-4 w-4" />
                                 {testMode ? 'Exit Test' : 'Test Map'}
                             </Button>
                         )}
-                        <Button onClick={openCreateModal} className="bg-green-700 hover:bg-green-800">
+                        <Button onClick={openCreateModal}>
                             <Plus className="mr-2 h-4 w-4" /> Add Camera
                         </Button>
                     </div>
+                }
+            />
+
+            <section className="workspace-band p-4">
+                <div className="grid gap-3 md:grid-cols-3">
+                    <div className="rounded-lg border bg-card p-4">
+                        <div className="text-2xl font-bold text-green-700 dark:text-green-300">{activeCount}</div>
+                        <div className="text-xs text-muted-foreground">Active units</div>
+                    </div>
+                    <div className="rounded-lg border bg-card p-4">
+                        <div className="text-2xl font-bold text-yellow-700 dark:text-yellow-300">{maintenanceCount}</div>
+                        <div className="text-xs text-muted-foreground">Maintenance</div>
+                    </div>
+                    <div className="rounded-lg border bg-card p-4">
+                        <div className="text-2xl font-bold text-red-700 dark:text-red-300">{inactiveCount}</div>
+                        <div className="text-xs text-muted-foreground">Inactive units</div>
+                    </div>
                 </div>
-            </div>
+            </section>
 
             {/* Filter Controls */}
-            <div className="mb-4 bg-white rounded-lg border border-gray-200 shadow-sm">
+            <div className="workspace-panel">
                 <div className="p-4">
                     <div className="flex items-center gap-3 flex-wrap">
                         {/* Search Box */}
@@ -1215,7 +1210,7 @@ export default function CamerasPage() {
 
             {/* Map Tab */}
             {activeTab === 'map' && (
-            <div className="flex-1 bg-white rounded-lg border border-gray-200 overflow-hidden shadow-sm relative" style={{ minHeight: '480px' }}>
+            <div className="relative h-[min(72vh,760px)] min-h-[520px] overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm dark:border-border dark:bg-card">
                 <MapComponent
                     cameras={testMode && cameras.length === 0 ? defaultTestCameras : filteredCameras}
                 />
@@ -1233,75 +1228,189 @@ export default function CamerasPage() {
 
             {/* List Tab */}
             {activeTab === 'list' && (
-            <div className="bg-white rounded-lg border border-gray-200 overflow-hidden shadow-sm">
-                <div className="overflow-x-auto">
-                    <table className="w-full text-sm text-left">
-                        <thead className="text-xs text-gray-700 uppercase bg-gray-50 border-b">
-                            <tr>
-                                <th className="px-6 py-3">Camera Name</th>
-                                <th className="px-6 py-3">ID</th>
-                                <th className="px-6 py-3">Brand</th>
-                                <th className="px-6 py-3">Location</th>
-                                <th className="px-6 py-3">Status</th>
-                                <th className="px-6 py-3 text-right">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {filteredCameras.map((cam: any) => (
-                                <tr key={cam.id} className="bg-white border-b hover:bg-gray-50">
-                                    <td className="px-6 py-4 font-medium text-gray-900">{cam.camera_name || 'N/A'}</td>
-                                    <td className="px-6 py-4 text-gray-600 font-mono text-xs">{cam.camera_id}</td>
-                                    <td className="px-6 py-4">{cam.brand_name || 'N/A'}</td>
-                                    <td className="px-6 py-4 text-gray-600">{[cam.division_name, cam.range_name, cam.beat_name].filter(Boolean).join(' > ') || 'N/A'}</td>
-                                    <td className="px-6 py-4">
-                                        <span className={`px-2 py-1 rounded-full text-xs font-semibold ${cam.status === 'active' ? 'bg-green-100 text-green-800' :
-                                            cam.status === 'maintenance' ? 'bg-yellow-100 text-yellow-800' :
-                                                'bg-gray-100 text-gray-800'
-                                            }`}>
-                                            {cam.status}
-                                        </span>
-                                    </td>
-                                    <td className="px-6 py-4 text-right flex justify-end gap-2">
-                                        <button
-                                            onClick={() => openEditModal(cam)}
-                                            className="text-blue-600 hover:text-blue-800 p-1 bg-blue-50 rounded"
-                                            title="Edit Camera"
-                                        >
-                                            <Edit2 size={16} />
-                                        </button>
-                                        <button
-                                            onClick={() => setViewGalleryId(cam.id || cam.camera_id)}
-                                            className="text-purple-600 hover:text-purple-800 p-1 bg-purple-50 rounded"
-                                            title="View Gallery"
-                                        >
-                                            <ImageIcon size={16} />
-                                        </button>
-                                        <button
-                                            onClick={() => confirmDelete(cam.id)}
-                                            className="text-red-600 hover:text-red-800 p-1 bg-red-50 rounded"
-                                            title="Delete Camera"
-                                        >
-                                            <Trash2 size={16} />
-                                        </button>
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                    {filteredCameras.length === 0 && cameras.length > 0 && (
-                        <div className="p-8 text-center text-gray-500">
-                            <p className="mb-2">No cameras match your filters.</p>
-                            <Button onClick={clearFilters} variant="outline" size="sm">
-                                Clear Filters
-                            </Button>
-                        </div>
-                    )}
-                    {cameras.length === 0 && (
-                        <div className="p-8 text-center text-gray-500">No cameras found. Add one to get started.</div>
-                    )}
-                </div>
-            </div>
+                <Card className="overflow-hidden">
+                    <CardContent className="p-0">
+                        {filteredCameras.length === 0 ? (
+                            <EmptyState
+                                title={cameras.length === 0 ? 'No cameras found' : 'No cameras match your filters'}
+                                description={cameras.length === 0 ? 'Add a camera to begin building the surveillance inventory.' : 'Clear filters or adjust the search criteria to show more cameras.'}
+                                icon={CameraIcon}
+                                action={
+                                    cameras.length === 0 ? (
+                                        <Button onClick={openCreateModal}>
+                                            <Plus className="mr-2 h-4 w-4" />
+                                            Add Camera
+                                        </Button>
+                                    ) : (
+                                        <Button onClick={clearFilters} variant="outline" size="sm">
+                                            Clear Filters
+                                        </Button>
+                                    )
+                                }
+                                className="m-6"
+                            />
+                        ) : (
+                            <Table>
+                                <TableHeader>
+                                    <TableRow>
+                                        <TableHead>Camera</TableHead>
+                                        <TableHead>Brand</TableHead>
+                                        <TableHead>Location</TableHead>
+                                        <TableHead>Status</TableHead>
+                                        <TableHead>Installed</TableHead>
+                                        <TableHead className="text-right">Actions</TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    {filteredCameras.map((cam: any) => (
+                                        <TableRow key={cam.id} className="cursor-pointer" onClick={() => setSelectedCamera(cam)}>
+                                            <TableCell>
+                                                <div>
+                                                    <div className="font-medium text-foreground">{cam.camera_name || 'N/A'}</div>
+                                                    <div className="font-mono text-xs uppercase text-muted-foreground">{cam.camera_id}</div>
+                                                </div>
+                                            </TableCell>
+                                            <TableCell>
+                                                <div className="text-sm">
+                                                    <p>{cam.brand_name || 'N/A'}</p>
+                                                    <p className="text-xs text-muted-foreground">{cam.camera_model || 'Model not recorded'}</p>
+                                                </div>
+                                            </TableCell>
+                                            <TableCell className="max-w-xs">
+                                                <div className="truncate text-sm">
+                                                    {[cam.division_name, cam.range_name, cam.beat_name].filter(Boolean).join(' > ') || 'Unassigned'}
+                                                </div>
+                                            </TableCell>
+                                            <TableCell>
+                                                <StatusBadge status={cam.status || 'inactive'} />
+                                            </TableCell>
+                                            <TableCell className="text-sm text-muted-foreground">
+                                                {cam.install_date ? new Date(cam.install_date).toLocaleDateString() : 'Not recorded'}
+                                            </TableCell>
+                                            <TableCell>
+                                                <div className="flex justify-end gap-2" onClick={(event) => event.stopPropagation()}>
+                                                    <Button size="sm" variant="outline" onClick={() => setSelectedCamera(cam)}>
+                                                        Details
+                                                    </Button>
+                                                    <Button size="icon" variant="ghost" onClick={() => openEditModal(cam)} title="Edit Camera">
+                                                        <Edit2 className="h-4 w-4" />
+                                                    </Button>
+                                                    <Button size="icon" variant="ghost" onClick={() => setViewGalleryId(cam.id || cam.camera_id)} title="View Gallery">
+                                                        <ImageIcon className="h-4 w-4" />
+                                                    </Button>
+                                                    <Button size="icon" variant="ghost" onClick={() => confirmDelete(cam.id)} title="Delete Camera">
+                                                        <Trash2 className="h-4 w-4 text-red-600" />
+                                                    </Button>
+                                                </div>
+                                            </TableCell>
+                                        </TableRow>
+                                    ))}
+                                </TableBody>
+                            </Table>
+                        )}
+                    </CardContent>
+                </Card>
             )}
+
+            <Sheet open={!!selectedCamera} onOpenChange={(open) => !open && setSelectedCamera(null)}>
+                <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-xl">
+                    {selectedCamera && (
+                        <>
+                            <SheetHeader>
+                                <SheetTitle>{selectedCamera.camera_name || 'Camera Details'}</SheetTitle>
+                                <SheetDescription>
+                                    {selectedCamera.camera_id || 'Camera ID not recorded'}
+                                </SheetDescription>
+                            </SheetHeader>
+
+                            <div className="mt-6 space-y-6">
+                                <div className="flex items-center justify-between rounded-lg border bg-muted/40 p-4">
+                                    <div>
+                                        <p className="text-sm font-medium">Operational status</p>
+                                        <p className="text-xs text-muted-foreground">Current inventory state</p>
+                                    </div>
+                                    <StatusBadge status={selectedCamera.status || 'inactive'} />
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-3 text-sm">
+                                    <div className="rounded-lg border p-3">
+                                        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Brand</p>
+                                        <p className="mt-1 font-medium">{selectedCamera.brand_name || 'Not recorded'}</p>
+                                    </div>
+                                    <div className="rounded-lg border p-3">
+                                        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Model</p>
+                                        <p className="mt-1 font-medium">{selectedCamera.camera_model || 'Not recorded'}</p>
+                                    </div>
+                                    <div className="rounded-lg border p-3">
+                                        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Serial</p>
+                                        <p className="mt-1 font-medium">{selectedCamera.serial_number || 'Not recorded'}</p>
+                                    </div>
+                                    <div className="rounded-lg border p-3">
+                                        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Installed</p>
+                                        <p className="mt-1 font-medium">
+                                            {selectedCamera.install_date ? new Date(selectedCamera.install_date).toLocaleDateString() : 'Not recorded'}
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <Separator />
+
+                                <div className="space-y-3">
+                                    <h3 className="text-sm font-semibold">Location hierarchy</h3>
+                                    <div className="rounded-lg border p-4 text-sm">
+                                        <div className="grid gap-3">
+                                            <div className="flex justify-between gap-4">
+                                                <span className="text-muted-foreground">Division</span>
+                                                <span className="font-medium">{selectedCamera.division_name || 'Unassigned'}</span>
+                                            </div>
+                                            <div className="flex justify-between gap-4">
+                                                <span className="text-muted-foreground">Range</span>
+                                                <span className="font-medium">{selectedCamera.range_name || 'Unassigned'}</span>
+                                            </div>
+                                            <div className="flex justify-between gap-4">
+                                                <span className="text-muted-foreground">Beat</span>
+                                                <span className="font-medium">{selectedCamera.beat_name || 'Unassigned'}</span>
+                                            </div>
+                                            <div className="flex justify-between gap-4">
+                                                <span className="text-muted-foreground">Coordinates</span>
+                                                <span className="font-mono text-xs">
+                                                    {selectedCamera.latitude != null && selectedCamera.longitude != null
+                                                        ? `${Number(selectedCamera.latitude).toFixed(5)}, ${Number(selectedCamera.longitude).toFixed(5)}`
+                                                        : 'Not recorded'}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {selectedCamera.notes && (
+                                    <div className="space-y-2">
+                                        <h3 className="text-sm font-semibold">Notes</h3>
+                                        <p className="rounded-lg border bg-muted/30 p-3 text-sm text-muted-foreground">
+                                            {selectedCamera.notes}
+                                        </p>
+                                    </div>
+                                )}
+
+                                <div className="flex flex-wrap gap-2 border-t pt-4">
+                                    <Button onClick={() => openEditModal(selectedCamera)} className="gap-2">
+                                        <Edit2 className="h-4 w-4" />
+                                        Edit Camera
+                                    </Button>
+                                    <Button variant="outline" onClick={() => setViewGalleryId(selectedCamera.id || selectedCamera.camera_id)} className="gap-2">
+                                        <ImageIcon className="h-4 w-4" />
+                                        Gallery
+                                    </Button>
+                                    <Button variant="destructive" onClick={() => confirmDelete(selectedCamera.id)} className="gap-2">
+                                        <Trash2 className="h-4 w-4" />
+                                        Delete
+                                    </Button>
+                                </div>
+                            </div>
+                        </>
+                    )}
+                </SheetContent>
+            </Sheet>
 
             <Modal
                 isOpen={isModalOpen}
@@ -1323,14 +1432,6 @@ export default function CamerasPage() {
                 message="Are you sure you want to delete this camera? This action cannot be undone."
                 confirmText="Delete"
                 variant="danger"
-            />
-
-            <AlertDialog
-                isOpen={alert.isOpen}
-                onClose={() => setAlert({ ...alert, isOpen: false })}
-                title={alert.title}
-                message={alert.message}
-                variant={alert.variant}
             />
 
             {showDiagnostics && (
