@@ -549,8 +549,8 @@ export default function MapComponent({
 
     // Always prefer the interactive map; never switch to the older fallback UI
     return (
-        <div className="w-full h-full relative bg-gradient-to-br from-green-50 to-blue-50">
-            <div ref={mapRef} className="w-full h-full" />
+        <div className="relative h-full min-h-[480px] w-full bg-gradient-to-br from-green-50 to-blue-50">
+            <div ref={mapRef} className="h-full min-h-[480px] w-full" />
 
             {loading && (
                 <div className="absolute inset-0 flex items-center justify-center bg-white/60 backdrop-blur-sm">

@@ -1,11 +1,16 @@
-import { useEffect, useState } from 'react';
-import MapComponent from '../components/MapComponent';
+import { useEffect, useMemo, useState } from 'react';
+import { AlertCircle, Camera, Layers, MapPin, PawPrint, RefreshCw, Video } from 'lucide-react';
 import CameraGallery from '@/components/CameraGallery';
-import { Card } from '@/components/ui/card';
+import MapComponent from '@/components/MapComponent';
+import { ConfidenceBadge, EmptyState, LoadingState, MetricCard, StatusBadge } from '@/components/common';
+import { PageHeader } from '@/components/layout/PageHeader';
 import { Button } from '@/components/ui/button';
-import { PawPrint, Video, RefreshCw, AlertCircle, X } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Separator } from '@/components/ui/separator';
+import { normalizeConfidence } from '@/utils/detections';
+import { toast } from 'sonner';
 
-type Camera = {
+type CameraRecord = {
     id: string;
     camera_id: string;
     camera_name: string;
@@ -15,9 +20,10 @@ type Camera = {
     notes?: string;
     division_name?: string;
     range_name?: string;
+    beat_name?: string;
 };
 
-type Detection = {
+type DetectionRecord = {
     id: string;
     detected_animal: string;
     detected_animal_scientific: string;
@@ -30,195 +36,277 @@ type Detection = {
 };
 
 export default function WildlifeMapPage() {
-    const [cameras, setCameras] = useState<Camera[]>([]);
-    const [detections, setDetections] = useState<Detection[]>([]);
+    const [cameras, setCameras] = useState<CameraRecord[]>([]);
+    const [detections, setDetections] = useState<DetectionRecord[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [viewGalleryId, setViewGalleryId] = useState<string | null>(null);
+    const [selectedCamera, setSelectedCamera] = useState<CameraRecord | null>(null);
+    const [selectedDetection, setSelectedDetection] = useState<DetectionRecord | null>(null);
 
     useEffect(() => {
-        fetchMapData();
+        void fetchMapData();
 
-        // Listen for map popup events
-        const handleOpenGallery = (e: any) => {
-            if (e.detail) {
-                console.log('WildlifeMap: Opening gallery for camera:', e.detail);
-                setViewGalleryId(e.detail);
-            }
+        const handleOpenGallery = (event: any) => {
+            if (event.detail) setViewGalleryId(event.detail);
         };
+
         window.addEventListener('open-camera-gallery', handleOpenGallery);
         return () => window.removeEventListener('open-camera-gallery', handleOpenGallery);
     }, []);
 
+    const stats = useMemo(() => ({
+        total: cameras.length,
+        active: cameras.filter((camera) => camera.status === 'active').length,
+        maintenance: cameras.filter((camera) => camera.status === 'maintenance').length,
+        inactive: cameras.filter((camera) => camera.status === 'inactive').length,
+    }), [cameras]);
+
     const fetchMapData = async () => {
         try {
+            setLoading(true);
             setError(null);
             const token = localStorage.getItem('accessToken');
             if (!token) {
                 setError('No authentication token found');
-                setLoading(false);
                 return;
             }
 
-            const headers = { 'Authorization': `Bearer ${token}` };
-
+            const headers = { Authorization: `Bearer ${token}` };
             const [camerasRes, detectionsRes] = await Promise.all([
                 fetch('/api/cameras', { headers }),
-                fetch('/api/images?confirmation_status=confirmed&limit=50&sort=confirmed_at', { headers })
+                fetch('/api/images?confirmation_status=confirmed&limit=50&sort=confirmed_at', { headers }),
             ]);
 
-            if (camerasRes.ok) {
-                const data = await camerasRes.json();
-                setCameras(data.cameras || []);
-            }
+            if (!camerasRes.ok) throw new Error('Failed to load camera network');
+            const cameraData = await camerasRes.json();
+            setCameras(cameraData.cameras || []);
 
             if (detectionsRes.ok) {
-                const data = await detectionsRes.json();
-                setDetections(data.images || []);
+                const detectionData = await detectionsRes.json();
+                setDetections(detectionData.images || []);
             } else {
-                console.warn('Failed to fetch detections');
+                setDetections([]);
             }
-        } catch (e: any) {
-            console.error('Failed to load map data:', e);
-            setError(e.message || 'Failed to load data');
+
+            toast.success('Map data refreshed');
+        } catch (error: any) {
+            setError(error.message || 'Failed to load map data');
+            toast.error(error.message || 'Failed to load map data');
         } finally {
             setLoading(false);
         }
     };
 
+    const cameraForGallery = cameras.find((camera) => camera.id === viewGalleryId);
+
     return (
-        <div className="p-6 h-full flex flex-col gap-4">
-            <div className="flex items-center justify-between">
-                <div>
-                    <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-                        <PawPrint className="w-6 h-6 text-green-700" />
-                        Wildlife Activity Map
-                    </h1>
-                    <p className="text-sm text-gray-600 mt-1">
-                        Live camera network with confirmed animal detections.
-                    </p>
-                </div>
-                <div className="flex gap-3">
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={fetchMapData}
-                        disabled={loading}
-                        className="flex items-center gap-2"
-                    >
-                        <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+        <div className="space-y-6">
+            <PageHeader
+                eyebrow="Map Workspace"
+                title="Wildlife Activity Map"
+                description="Inspect camera coverage, operational status, and recent confirmed detections in one map workspace."
+                actions={
+                    <Button variant="outline" size="sm" onClick={() => void fetchMapData()} disabled={loading} className="gap-2">
+                        <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
                         Refresh
                     </Button>
-                </div>
+                }
+                badges={
+                    <>
+                        <StatusBadge status="active" label={`${stats.active} active`} />
+                        <StatusBadge status="maintenance" label={`${stats.maintenance} maintenance`} />
+                        <StatusBadge status="inactive" label={`${stats.inactive} offline`} />
+                    </>
+                }
+            />
+
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                <MetricCard label="Total Cameras" value={stats.total} icon={Camera} description="Mapped surveillance units" />
+                <MetricCard label="Active Cameras" value={stats.active} icon={Video} tone="success" description="Available in field" />
+                <MetricCard label="Offline Units" value={stats.inactive} icon={AlertCircle} tone="danger" description="Need follow-up" />
+                <MetricCard label="Confirmed Detections" value={detections.length} icon={PawPrint} tone="info" description="Latest mapped records" />
             </div>
 
             {error && (
-                <Card className="border-red-200 bg-red-50 p-4">
-                    <div className="flex items-center gap-2 text-red-800">
-                        <AlertCircle className="w-5 h-5" />
-                        <span>{error}</span>
-                    </div>
-                </Card>
+                <div className="flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 p-4">
+                    <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-red-600" />
+                    <p className="text-sm text-red-800">{error}</p>
+                </div>
             )}
 
             {loading ? (
-                <Card className="flex-1 flex items-center justify-center">
-                    <div className="text-center">
-                        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-700 mx-auto mb-4"></div>
-                        <p className="text-gray-600">Loading map data...</p>
-                    </div>
-                </Card>
+                <LoadingState label="Loading map workspace" className="min-h-[560px]" />
             ) : (
-                <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] gap-4 flex-1 min-h-[500px]">
-                    <Card className="relative overflow-hidden flex flex-col">
-                        <div className="flex items-center justify-between px-4 py-3 border-b bg-gray-50">
-                            <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
-                                <Video className="w-4 h-4 text-green-600" />
-                                <span>Camera Network Map</span>
+                <div className="grid min-h-[620px] gap-4 xl:grid-cols-[minmax(0,1.7fr)_380px]">
+                    <Card className="workspace-map-frame">
+                        <div className="flex flex-col gap-3 border-b bg-muted/40 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                            <div className="flex items-center gap-2 text-sm font-medium">
+                                <MapPin className="h-4 w-4 text-primary" />
+                                Camera Network
                             </div>
-                            <div className="text-xs text-gray-500">
-                                {cameras.length} cameras · {detections.length} confirmed detections
+                            <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+                                <span>{cameras.length} cameras</span>
+                                <span>{detections.length} confirmed detections</span>
                             </div>
                         </div>
-                        <div className="flex-1">
+                        <div className="h-[560px]">
                             <MapComponent cameras={cameras} />
                         </div>
                     </Card>
 
                     <div className="space-y-4">
-                        <Card className="p-4">
-                            <h2 className="text-sm font-semibold text-gray-900 mb-3">Legend</h2>
-                            <div className="space-y-2 text-xs text-gray-700">
-                                <div className="flex items-center gap-2">
-                                    <span className="inline-block w-3 h-3 rounded-full bg-green-500" />
-                                    <span>Active camera</span>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    <span className="inline-block w-3 h-3 rounded-full bg-yellow-500" />
-                                    <span>Maintenance camera</span>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    <span className="inline-block w-3 h-3 rounded-full bg-red-500" />
-                                    <span>Offline camera</span>
-                                </div>
-                                <div className="flex items-center gap-2 mt-3 pt-2 border-t">
-                                    <span className="inline-block w-3 h-3 rounded bg-orange-600" />
-                                    <span>Confirmed detections</span>
-                                </div>
-                            </div>
+                        <Card>
+                            <CardHeader className="pb-3">
+                                <CardTitle className="flex items-center gap-2 text-base">
+                                    <Layers className="h-4 w-4" />
+                                    Map Legend
+                                </CardTitle>
+                            </CardHeader>
+                            <CardContent className="space-y-3 text-sm">
+                                <LegendRow color="bg-green-500" label="Active camera" />
+                                <LegendRow color="bg-yellow-500" label="Maintenance camera" />
+                                <LegendRow color="bg-red-500" label="Offline camera" />
+                                <Separator />
+                                <LegendRow color="bg-orange-600" label="Confirmed detection record" square />
+                            </CardContent>
                         </Card>
 
-                        <Card className="p-4 max-h-[340px] overflow-auto flex flex-col">
-                            <h2 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2 sticky top-0 bg-white pb-2">
-                                <PawPrint className="w-4 h-4 text-green-700" />
-                                Confirmed Detections
-                            </h2>
-                            <div className="space-y-2 text-xs flex-1">
-                                {detections.length > 0 ? (
-                                    detections.map((detection) => (
-                                        <div
-                                            key={detection.id}
-                                            className="border rounded-md px-3 py-2 hover:bg-gray-50 cursor-default bg-orange-50 border-orange-200"
-                                        >
-                                            <div className="flex justify-between items-start">
-                                                <div>
-                                                    <div className="font-semibold text-gray-900">
-                                                        {detection.detected_animal}
-                                                    </div>
-                                                    <div className="text-gray-600 text-[11px]">
-                                                        {detection.detected_animal_scientific}
-                                                    </div>
-                                                </div>
-                                                {detection.detection_confidence && (
-                                                    <span className={`text-[10px] font-semibold px-2 py-0.5 rounded ${'bg-green-100 text-green-800'}`}>
-                                                        {detection.detection_confidence}%
-                                                    </span>
-                                                )}
-                                            </div>
-                                            {detection.confirmed_at && (
-                                                <div className="text-[10px] text-gray-500 mt-1">
-                                                    ✓ {new Date(detection.confirmed_at).toLocaleDateString()}
-                                                </div>
-                                            )}
+                        <Card>
+                            <CardHeader className="pb-3">
+                                <CardTitle className="text-base">Camera Detail</CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                                {selectedCamera ? (
+                                    <div className="space-y-3 text-sm">
+                                        <div>
+                                            <p className="font-semibold">{selectedCamera.camera_name}</p>
+                                            <p className="font-mono text-xs text-muted-foreground">{selectedCamera.camera_id}</p>
                                         </div>
-                                    ))
-                                ) : (
-                                    <div className="text-gray-500 text-center py-4">
-                                        No confirmed detections yet
+                                        <StatusBadge status={selectedCamera.status || 'inactive'} />
+                                        <Separator />
+                                        <DetailRow label="Division" value={selectedCamera.division_name || 'Unassigned'} />
+                                        <DetailRow label="Range" value={selectedCamera.range_name || 'Unassigned'} />
+                                        <DetailRow label="Beat" value={selectedCamera.beat_name || 'Unassigned'} />
+                                        <DetailRow
+                                            label="Coordinates"
+                                            value={
+                                                selectedCamera.latitude != null && selectedCamera.longitude != null
+                                                    ? `${Number(selectedCamera.latitude).toFixed(5)}, ${Number(selectedCamera.longitude).toFixed(5)}`
+                                                    : 'Not recorded'
+                                            }
+                                        />
+                                        <Button size="sm" variant="outline" onClick={() => setViewGalleryId(selectedCamera.id)} className="w-full">
+                                            Open Gallery
+                                        </Button>
                                     </div>
+                                ) : (
+                                    <EmptyState
+                                        title="Select a camera"
+                                        description="Choose a camera from the list below to inspect details."
+                                        icon={Camera}
+                                        className="min-h-40"
+                                    />
                                 )}
-                            </div>
+                            </CardContent>
+                        </Card>
+
+                        <Card>
+                            <CardHeader className="pb-3">
+                                <CardTitle className="flex items-center gap-2 text-base">
+                                    <PawPrint className="h-4 w-4 text-primary" />
+                                    Recent Detections
+                                </CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                                <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
+                                    {detections.length > 0 ? detections.slice(0, 12).map((detection) => (
+                                        <button
+                                            key={detection.id}
+                                            onClick={() => setSelectedDetection(detection)}
+                                            className="w-full rounded-lg border bg-background p-3 text-left transition hover:bg-muted/50"
+                                        >
+                                            <div className="flex items-start justify-between gap-3">
+                                                <div className="min-w-0">
+                                                    <p className="truncate text-sm font-medium">{detection.detected_animal}</p>
+                                                    <p className="truncate text-xs italic text-muted-foreground">
+                                                        {detection.detected_animal_scientific || 'Scientific name unavailable'}
+                                                    </p>
+                                                </div>
+                                                <ConfidenceBadge value={normalizeConfidence(detection.detection_confidence)} />
+                                            </div>
+                                        </button>
+                                    )) : (
+                                        <EmptyState title="No confirmed detections" icon={PawPrint} className="min-h-36" />
+                                    )}
+                                </div>
+                            </CardContent>
+                        </Card>
+
+                        {selectedDetection && (
+                            <Card>
+                                <CardHeader className="pb-3">
+                                    <CardTitle className="text-base">Detection Detail</CardTitle>
+                                </CardHeader>
+                                <CardContent className="space-y-3 text-sm">
+                                    <p className="font-semibold">{selectedDetection.detected_animal}</p>
+                                    <ConfidenceBadge value={selectedDetection.detection_confidence} />
+                                    <DetailRow label="Confirmed" value={selectedDetection.confirmed_at ? new Date(selectedDetection.confirmed_at).toLocaleString() : 'Not recorded'} />
+                                    <DetailRow label="Camera" value={selectedDetection.camera_id || 'Unknown'} />
+                                </CardContent>
+                            </Card>
+                        )}
+
+                        <Card>
+                            <CardHeader className="pb-3">
+                                <CardTitle className="text-base">Camera List</CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                                <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
+                                    {cameras.map((camera) => (
+                                        <button
+                                            key={camera.id}
+                                            onClick={() => setSelectedCamera(camera)}
+                                            className="flex w-full items-center justify-between gap-3 rounded-lg border p-3 text-left text-sm transition hover:bg-muted/50"
+                                        >
+                                            <span className="min-w-0">
+                                                <span className="block truncate font-medium">{camera.camera_name}</span>
+                                                <span className="block truncate text-xs text-muted-foreground">{camera.beat_name || camera.range_name || 'Unassigned'}</span>
+                                            </span>
+                                            <StatusBadge status={camera.status || 'inactive'} showDot={false} />
+                                        </button>
+                                    ))}
+                                </div>
+                            </CardContent>
                         </Card>
                     </div>
                 </div>
             )}
-            {/* Camera Gallery Modal */}
+
             <CameraGallery
                 cameraId={viewGalleryId || ''}
-                cameraName={cameras.find(c => c.id === viewGalleryId)?.camera_name || (cameras.find(c => c.id === viewGalleryId)?.camera_id) || 'Camera'}
-                isOpen={!!viewGalleryId}
+                cameraName={cameraForGallery?.camera_name || cameraForGallery?.camera_id || 'Camera'}
+                isOpen={Boolean(viewGalleryId)}
                 onClose={() => setViewGalleryId(null)}
             />
+        </div>
+    );
+}
+
+function LegendRow({ color, label, square = false }: { color: string; label: string; square?: boolean }) {
+    return (
+        <div className="flex items-center gap-2 text-muted-foreground">
+            <span className={`${square ? 'rounded-sm' : 'rounded-full'} h-3 w-3 ${color}`} />
+            <span>{label}</span>
+        </div>
+    );
+}
+
+function DetailRow({ label, value }: { label: string; value: string }) {
+    return (
+        <div className="flex justify-between gap-4">
+            <span className="text-muted-foreground">{label}</span>
+            <span className="text-right font-medium">{value}</span>
         </div>
     );
 }

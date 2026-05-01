@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { toast } from 'sonner';
 
 interface CameraFormProps {
     initialData?: any;
@@ -210,7 +211,7 @@ export default function CameraForm({ initialData, onSubmit, onCancel }: CameraFo
         setLoading(true);
         try {
             if (!formData.brand_id || !formData.camera_name || !formData.beat_id || !formData.latitude || !formData.longitude) {
-                alert('Please select brand, enter camera name, choose beat, and set latitude/longitude.');
+                toast.error('Please select brand, enter camera name, choose beat, and set latitude/longitude.');
                 setLoading(false);
                 return;
             }
@@ -239,7 +240,7 @@ export default function CameraForm({ initialData, onSubmit, onCancel }: CameraFo
                 
                 generatedCameraId = `${brandCode}-${divisionCode}-${rangeCode}-${beatCode}-${cameraNumber}`;
             } else {
-                alert('Please select all geography hierarchy levels (Circle → Division → Range → Beat)');
+                toast.error('Please select all geography hierarchy levels: Circle, Division, Range, and Beat.');
                 setLoading(false);
                 return;
             }
@@ -325,11 +326,11 @@ export default function CameraForm({ initialData, onSubmit, onCancel }: CameraFo
                                         });
                                     },
                                     (error) => {
-                                        alert('Error getting location: ' + error.message);
+                                        toast.error(`Error getting location: ${error.message}`);
                                     }
                                 );
                             } else {
-                                alert('Geolocation is not supported by this browser.');
+                                toast.error('Geolocation is not supported by this browser.');
                             }
                         }}
                         className="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"

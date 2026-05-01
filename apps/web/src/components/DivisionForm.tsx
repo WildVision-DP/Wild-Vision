@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { toast } from 'sonner';
 
 interface DivisionFormProps {
     initialData?: any;
@@ -21,7 +22,7 @@ export default function DivisionForm({ initialData, circles = [], onSubmit, onCa
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         if (!formData.name || !formData.circle_id) {
-            alert('Please fill in all required fields');
+            toast.error('Please fill in all required fields.');
             return;
         }
         const submitData = {

@@ -1,16 +1,20 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { useDropzone } from 'react-dropzone';
+import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Upload, X, AlertCircle, RefreshCw, Camera, Image as ImageIcon, CheckCircle, RotateCw } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import CameraGallery from '@/components/CameraGallery';
-import DetectionConfirmationModal from '@/components/DetectionConfirmationModal';
 import CameraCapture from '@/components/CameraCapture';
+import { PageHeader } from '@/components/layout/PageHeader';
 import { addUploadToQueue, removeUpload, updateUploadStatus } from '@/utils/indexedDB';
+import { toast } from 'sonner';
+import { normalizeConfidence } from '@/utils/detections';
 
 // Supported file types
 const SUPPORTED_IMAGE_TYPES = {
@@ -46,9 +50,20 @@ type PendingDetection = {
     detected_animal_scientific: string;
     confidence: number;
     camera_id: string;
+    autoApproved?: boolean;
+    detectionStatus?: string;
+    status?: string;
+};
+
+type BatchUploadSummary = {
+    uploaded: PendingDetection[];
+    autoApproved: PendingDetection[];
+    sentForReview: PendingDetection[];
+    failed: number;
 };
 
 export default function UploadPage() {
+    const navigate = useNavigate();
     const [uploading, setUploading] = useState(false);
     const [cameras, setCameras] = useState<any[]>([]);
     const [selectedCameraId, setSelectedCameraId] = useState('');
@@ -67,6 +82,7 @@ export default function UploadPage() {
     const [isOnline, setIsOnline] = useState(() =>
         typeof navigator !== 'undefined' ? navigator.onLine : true
     );
+    const [batchUploadSummary, setBatchUploadSummary] = useState<BatchUploadSummary | null>(null);
     const [pendingDetection, setPendingDetection] = useState<PendingDetection | null>(null);
     const [pendingFileId, setPendingFileId] = useState<string | null>(null);
     const [isGalleryOpen, setIsGalleryOpen] = useState(false);
@@ -284,7 +300,7 @@ export default function UploadPage() {
      * Single-step upload: browser → POST /api/upload/direct (multipart) → API stores in MinIO → ML → DB.
      * No presigned URLs (avoids 403 / CORS / signature issues).
      */
-    const uploadFile = async (fileStatus: UploadFileLocal) => {
+    const uploadFile = async (fileStatus: UploadFileLocal): Promise<PendingDetection | null> => {
         const maxRetries = 3;
         const currentRetry = fileStatus.retryCount || 0;
         
@@ -295,7 +311,7 @@ export default function UploadPage() {
             const token = localStorage.getItem('accessToken');
             if (!token) throw new Error('Not logged in');
 
-            await new Promise<void>((resolve, reject) => {
+            return await new Promise<PendingDetection>((resolve, reject) => {
                 const xhr = new XMLHttpRequest();
                 const abortController = new AbortController();
                 uploadAbortControllers.current.set(fileStatus.id, abortController);
@@ -325,13 +341,11 @@ export default function UploadPage() {
                                 reject(new Error('Invalid server response'));
                                 return;
                             }
-                            setPendingDetection(detection);
-                            setPendingFileId(fileStatus.id);
                             setFiles(prev => prev.map(f =>
                                 f.id === fileStatus.id ? { ...f, status: 'completed', progress: 100 } : f
                             ));
                             void updateUploadStatus(fileStatus.id, { status: 'completed', progress: 100 });
-                            resolve();
+                            resolve(detection);
                         } catch {
                             reject(new Error('Failed to parse server response'));
                         }
@@ -387,7 +401,7 @@ export default function UploadPage() {
                 setTimeout(() => {
                     const updatedFile = files.find(f => f.id === fileStatus.id);
                     if (updatedFile) {
-                        uploadFile({ ...updatedFile, retryCount: nextRetry });
+                        void uploadFile({ ...updatedFile, retryCount: nextRetry });
                     }
                 }, Math.min(1000 * Math.pow(2, nextRetry), 10000));
             } else {
@@ -402,30 +416,69 @@ export default function UploadPage() {
                     retryCount: currentRetry 
                 });
             }
+            return null;
         }
+    };
+
+    const isAutoApprovedDetection = (detection: PendingDetection) => {
+        const status = detection.detectionStatus || detection.status;
+        return detection.autoApproved === true || status === 'confirmed' || normalizeConfidence(detection.confidence) >= 80;
     };
 
     const handleUploadAll = async () => {
         if (!isOnline) {
-            alert('You are offline. Uploads will be queued and automatically resume when connection is restored.');
+            toast.warning('You are offline. Uploads will be queued and automatically resume when connection is restored.');
             return;
         }
         setUploading(true);
         const toUpload = files.filter(f => f.status === 'pending' || f.status === 'error');
+        const uploadedDetections: PendingDetection[] = [];
         
         // Upload files sequentially to avoid overwhelming the connection
         for (const file of toUpload) {
-            await uploadFile(file);
+            const detection = await uploadFile(file);
+            if (detection) uploadedDetections.push(detection);
         }
         
         setUploading(false);
+
+        const autoApproved = uploadedDetections.filter(isAutoApprovedDetection);
+        const sentForReview = uploadedDetections.filter((detection) => !isAutoApprovedDetection(detection));
+        const failed = toUpload.length - uploadedDetections.length;
+
+        if (uploadedDetections.length > 0 || failed > 0) {
+            setBatchUploadSummary({
+                uploaded: uploadedDetections,
+                autoApproved,
+                sentForReview,
+                failed,
+            });
+
+            if (sentForReview.length > 0) {
+                toast.info(`${sentForReview.length} low-confidence image${sentForReview.length === 1 ? '' : 's'} sent to review.`);
+            }
+            if (autoApproved.length > 0) {
+                toast.success(`${autoApproved.length} high-confidence image${autoApproved.length === 1 ? '' : 's'} auto-approved.`);
+            }
+            if (failed > 0) {
+                toast.error(`${failed} image${failed === 1 ? '' : 's'} failed to upload.`);
+            }
+        }
     };
 
     // Retry individual file (3.1.1.11)
     const handleRetryFile = async (fileId: string) => {
         const file = files.find(f => f.id === fileId);
         if (file) {
-            await uploadFile({ ...file, retryCount: 0 }); // Reset retry count for manual retry
+            const detection = await uploadFile({ ...file, retryCount: 0 }); // Reset retry count for manual retry
+            if (detection) {
+                setBatchUploadSummary({
+                    uploaded: [detection],
+                    autoApproved: isAutoApprovedDetection(detection) ? [detection] : [],
+                    sentForReview: isAutoApprovedDetection(detection) ? [] : [detection],
+                    failed: 0,
+                });
+            }
         }
     };
 
@@ -509,16 +562,38 @@ export default function UploadPage() {
 
     return (
         <div className="space-y-6">
-            <div className="flex justify-between items-center">
-                <div className="flex items-center space-x-4">
-                    <h1 className="text-3xl font-bold tracking-tight">Upload Patrol Images</h1>
-                    {!isOnline && (
-                        <span className="bg-yellow-100 text-yellow-800 text-xs px-2 py-1 rounded-full font-medium flex items-center">
-                            <AlertCircle className="w-3 h-3 mr-1" /> Offline Mode
-                        </span>
-                    )}
+            <PageHeader
+                eyebrow="Verification"
+                title="Upload Patrol Images"
+                description="Select the source camera, batch image intake, and send low-confidence detections to review without blocking the next upload."
+                badges={!isOnline ? (
+                    <span className="flex items-center rounded-full bg-yellow-100 px-2 py-1 text-xs font-medium text-yellow-800">
+                        <AlertCircle className="mr-1 h-3 w-3" /> Offline Mode
+                    </span>
+                ) : undefined}
+            />
+
+            <section className="workspace-band p-5 sm:p-6">
+                <div className="grid gap-4 md:grid-cols-4">
+                    <div className="md:col-span-2">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-primary">Batch intake workflow</p>
+                        <h2 className="mt-2 text-2xl font-semibold tracking-tight">Upload, classify, group for review</h2>
+                        <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
+                            High-confidence detections are saved automatically. Low-confidence detections are grouped and sent to the admin review queue once the batch finishes.
+                        </p>
+                    </div>
+                    <div className="rounded-lg border bg-card p-4">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Camera selected</p>
+                        <p className="mt-2 truncate text-sm font-semibold">{selectedCameraId ? getSelectedCameraName() : 'Select a camera first'}</p>
+                    </div>
+                    <div className="rounded-lg border bg-card p-4">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Connection</p>
+                        <p className={`mt-2 text-sm font-semibold ${isOnline ? 'text-green-700' : 'text-yellow-700'}`}>
+                            {isOnline ? 'Online uploads ready' : 'Offline queue enabled'}
+                        </p>
+                    </div>
                 </div>
-            </div>
+            </section>
 
             {/* Offline Alert */}
             {!isOnline && (
@@ -548,7 +623,7 @@ export default function UploadPage() {
 
             {/* Upload Statistics (3.1.1.10) */}
             {files.length > 0 && (
-                <Card className="bg-gradient-to-r from-blue-50 to-green-50">
+                <Card className="workspace-panel-muted">
                     <CardHeader>
                         <CardTitle className="text-lg">Upload Statistics</CardTitle>
                     </CardHeader>
@@ -579,9 +654,9 @@ export default function UploadPage() {
                 </Card>
             )}
 
-            <div className="grid gap-6">
+            <div className="grid gap-6 xl:grid-cols-[minmax(0,0.95fr)_minmax(420px,1.05fr)]">
                 {/* 1. Camera Selection Hierarchy */}
-                <Card>
+                <Card className="workspace-panel xl:col-span-2">
                     <CardHeader>
                         <CardTitle className="flex items-center gap-2">
                             <Camera className="w-5 h-5" /> 1. Select Source Camera
@@ -656,7 +731,7 @@ export default function UploadPage() {
                 </Card>
 
                 {/* 2. Upload/Capture Options */}
-                <Card className={!selectedCameraId ? 'opacity-50' : ''}>
+                <Card className={`workspace-panel ${!selectedCameraId ? 'opacity-50' : ''}`}>
                     <CardHeader>
                         <CardTitle className="flex items-center gap-2">
                             <Camera className="w-5 h-5" /> 2. Capture or Upload Image
@@ -692,7 +767,7 @@ export default function UploadPage() {
                 </Card>
 
                 {/* 2. Dropzone */}
-                <Card className={!selectedCameraId ? 'opacity-50' : ''}>
+                <Card className={`workspace-panel ${!selectedCameraId ? 'opacity-50' : ''}`}>
                     <CardHeader>
                         <CardTitle className="flex items-center gap-2">
                             <Upload className="w-5 h-5" /> 3. Or Drag & Drop Images
@@ -723,7 +798,7 @@ export default function UploadPage() {
 
                 {/* 3. File List with Progress (3.1.1.5) */}
                 {files.length > 0 && (
-                    <Card>
+                    <Card className="workspace-panel xl:col-span-2">
                         <CardHeader>
                             <div className="flex items-center justify-between">
                                 <CardTitle>4. Upload Queue ({files.length} files)</CardTitle>
@@ -826,14 +901,67 @@ export default function UploadPage() {
                 cameraName={getSelectedCameraName()}
             />
 
-            {/* Detection Confirmation Modal */}
-            <DetectionConfirmationModal
-                isOpen={!!pendingDetection}
-                imageData={pendingDetection}
-                onConfirm={handleDetectionConfirm}
-                onReject={handleDetectionDismiss}
-                onDismiss={handleDetectionDismiss}
-            />
+            <Dialog open={!!batchUploadSummary} onOpenChange={(open) => !open && setBatchUploadSummary(null)}>
+                <DialogContent className="max-w-2xl">
+                    <DialogHeader>
+                        <DialogTitle>Batch Upload Complete</DialogTitle>
+                        <DialogDescription>
+                            Upload verification was grouped by confidence so no image blocks the next upload.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    {batchUploadSummary && (
+                        <div className="space-y-4">
+                            <div className="grid gap-3 sm:grid-cols-3">
+                                <div className="rounded-lg border bg-green-50 p-4 text-center">
+                                    <div className="text-2xl font-bold text-green-700">{batchUploadSummary.autoApproved.length}</div>
+                                    <div className="text-xs font-medium text-green-700">Auto-approved</div>
+                                </div>
+                                <div className="rounded-lg border bg-amber-50 p-4 text-center">
+                                    <div className="text-2xl font-bold text-amber-700">{batchUploadSummary.sentForReview.length}</div>
+                                    <div className="text-xs font-medium text-amber-700">Sent to review</div>
+                                </div>
+                                <div className="rounded-lg border bg-red-50 p-4 text-center">
+                                    <div className="text-2xl font-bold text-red-700">{batchUploadSummary.failed}</div>
+                                    <div className="text-xs font-medium text-red-700">Failed</div>
+                                </div>
+                            </div>
+
+                            {batchUploadSummary.sentForReview.length > 0 && (
+                                <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                                    <p className="font-semibold">Low-confidence images are now in the review queue.</p>
+                                    <p className="mt-1">Admins can verify, correct, approve, or reject these detections from the review screen.</p>
+                                </div>
+                            )}
+
+                            <div className="max-h-64 overflow-y-auto rounded-lg border">
+                                {batchUploadSummary.uploaded.map((detection) => (
+                                    <div key={detection.id} className="flex items-center justify-between gap-3 border-b px-4 py-3 last:border-b-0">
+                                        <div className="min-w-0">
+                                            <p className="truncate text-sm font-medium">{detection.detected_animal || 'Unknown animal'}</p>
+                                            <p className="text-xs text-muted-foreground">{normalizeConfidence(detection.confidence)}% confidence</p>
+                                        </div>
+                                        <span className={`rounded-full px-2 py-1 text-xs font-semibold ${isAutoApprovedDetection(detection) ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
+                                            {isAutoApprovedDetection(detection) ? 'Auto-approved' : 'Review'}
+                                        </span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setBatchUploadSummary(null)}>
+                            Close
+                        </Button>
+                        {batchUploadSummary?.sentForReview.length ? (
+                            <Button onClick={() => navigate('/admin/review')}>
+                                Open Review Queue
+                            </Button>
+                        ) : null}
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }
